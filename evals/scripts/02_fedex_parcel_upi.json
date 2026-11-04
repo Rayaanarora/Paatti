@@ -1,0 +1,23 @@
+{
+  "id": "02_fedex_parcel_upi",
+  "title": "FedEx parcel with drugs, handed to Mumbai Police, UPI payment",
+  "turns": [
+    "Good afternoon ma'am, calling from FedEx courier. A parcel booked on your Aadhaar was seized at Mumbai airport.",
+    "It contains 140 grams of MDMA drugs and five fake passports. I am connecting you to Mumbai Police cyber crime.",
+    "This is Sub Inspector Pawar, Mumbai Police. An FIR is registered against you, we will arrest you today.",
+    "This matter is confidential, do not disconnect and do not tell your son.",
+    "You must pay 2 lakh rupees refundable security deposit. Pay by UPI to mumbaipolice.verify@ybl",
+    "Yes correct. Pay now."
+  ],
+  "expected": {
+    "claimed_agency": "Mumbai Police",
+    "amount": "200000",
+    "account_number": null,
+    "ifsc": null,
+    "upi_id": "mumbaipolice.verify@ybl",
+    "phone_numbers": [],
+    "apps_requested": [],
+    "stage": "extraction",
+    "confirmed": ["upi_id"]
+  }
+}

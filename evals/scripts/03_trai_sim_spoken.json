@@ -1,0 +1,24 @@
+{
+  "id": "03_trai_sim_spoken",
+  "title": "TRAI SIM block, spoken digits and a correction",
+  "turns": [
+    "Namaste, this is TRAI. Your SIM card will be blocked in two hours because of illegal advertisement complaints.",
+    "Your number is linked to a case in Mumbai. Police will come with warrant to arrest you.",
+    "Stay on this call, don't cut. Don't tell anyone, it is a secret investigation.",
+    "Transfer the verification amount of 95000 rupees to this account. Account number is nine one two zero double four five six seven eight one two.",
+    "No no madam, wrong. It is nine one two zero four four five six seven eight one three.",
+    "Haan correct, now IFSC is ICIC0007788.",
+    "Correct madam. Call me back on 7766554433 if line cuts."
+  ],
+  "expected": {
+    "claimed_agency": "TRAI",
+    "amount": "95000",
+    "account_number": "912044567813",
+    "ifsc": "ICIC0007788",
+    "upi_id": null,
+    "phone_numbers": ["7766554433"],
+    "apps_requested": [],
+    "stage": "extraction",
+    "confirmed": ["account_number", "ifsc"]
+  }
+}

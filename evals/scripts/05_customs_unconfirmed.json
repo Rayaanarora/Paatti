@@ -1,0 +1,21 @@
+{
+  "id": "05_customs_unconfirmed",
+  "title": "Customs officer hangs up before confirming the account",
+  "turns": [
+    "Hello, I am calling from Customs department, Chennai airport. A package in your name has illegal gold.",
+    "If you do not cooperate, legal action and arrest will happen today itself.",
+    "You need to pay a fine of 75,000 rupees. Account number 3344 5566 7788 SBI branch, IFSC SBIN0011223.",
+    "Why are you so slow? I am calling another officer. Use AnyDesk app and I will do it for you."
+  ],
+  "expected": {
+    "claimed_agency": "Customs",
+    "amount": "75000",
+    "account_number": "334455667788",
+    "ifsc": "SBIN0011223",
+    "upi_id": null,
+    "phone_numbers": [],
+    "apps_requested": ["AnyDesk"],
+    "stage": "extraction",
+    "confirmed": []
+  }
+}

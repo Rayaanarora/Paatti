@@ -1,0 +1,34 @@
+{
+  "id": "01_cbi_aadhaar",
+  "title": "Fake CBI officer, Aadhaar money-laundering case, Skype video",
+  "turns": [
+    "Hello, am I speaking to Kamala madam? This is Inspector Rajesh Verma from CBI, New Delhi.",
+    "Madam, your Aadhaar card is linked to a money-laundering case. 68 bank accounts were opened with it.",
+    "An arrest warrant has been issued in your name. This is a digital arrest, you cannot disconnect.",
+    "Do not tell anyone in your family. Join me on Skype video call now, keep the camera on.",
+    "To prove your innocence you must transfer Rs 4,50,000 to the RBI safe account for verification.",
+    "Note down. Account number 5021 0034 7781 9920. Bank is HDFC.",
+    "Haan, correct. IFSC is HDFC0001234.",
+    "Yes yes. Do it fast madam, the officer is waiting.",
+    "After transfer send screenshot on WhatsApp to 98200 11223."
+  ],
+  "expected": {
+    "claimed_agency": "CBI",
+    "amount": "450000",
+    "account_number": "5021003477819920",
+    "ifsc": "HDFC0001234",
+    "upi_id": null,
+    "phone_numbers": [
+      "9820011223"
+    ],
+    "apps_requested": [
+      "Skype",
+      "WhatsApp"
+    ],
+    "stage": "extraction",
+    "confirmed": [
+      "account_number",
+      "ifsc"
+    ]
+  }
+}

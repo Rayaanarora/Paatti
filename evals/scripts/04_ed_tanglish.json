@@ -1,0 +1,24 @@
+{
+  "id": "04_ed_tanglish",
+  "title": "Enforcement Directorate, Tamil-English code-mix, account and UPI",
+  "turns": [
+    "Vanakkam amma, naan Enforcement Directorate officer pesuren. Unga Aadhaar-la oru money laundering case irukku.",
+    "Ungala arrest panna warrant ready-a irukku amma. Jail pogaama irukkanum-na naan solradha kelunga.",
+    "Yaarukkum sollaadheenga, phone-a cut pannaadheenga. Zoom call-la join pannunga.",
+    "Rs 1.2 lakh RBI verification-ku anuppanum. Account number 6677 8899 0011 22, Canara Bank.",
+    "Aama, correct. IFSC CNRB0002345.",
+    "Sari amma. Illa-na GPay-la ed.case2026@okicici ku anuppunga.",
+    "Aama correct, seekram anuppunga."
+  ],
+  "expected": {
+    "claimed_agency": "ED",
+    "amount": "120000",
+    "account_number": "66778899001122",
+    "ifsc": "CNRB0002345",
+    "upi_id": "ed.case2026@okicici",
+    "phone_numbers": [],
+    "apps_requested": ["Zoom"],
+    "stage": "extraction",
+    "confirmed": ["account_number", "ifsc", "upi_id"]
+  }
+}
