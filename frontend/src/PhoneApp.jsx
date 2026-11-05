@@ -120,7 +120,7 @@ export default function PhoneApp({ sessionId: initialId }) {
   const [muted, setMuted] = useState(false)
   const [voice, setVoice] = useState(true)
   const [draft, setDraft] = useState('')
-  const [persona, setPersona] = useState('paatti')
+  const [who, setWho] = useState({ name: 'Kamala Paatti', tagline: 'Retired Teacher · Mylapore, Chennai', avatar: '👵' })
   const [subtitle, setSubtitle] = useState('')
   const [paattiSpeaking, setPaattiSpeaking] = useState(false)
   const [beatsSent, setBeatsSent] = useState(0)
@@ -153,6 +153,18 @@ export default function PhoneApp({ sessionId: initialId }) {
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Show who is about to answer (the dashboard may have picked any persona, or a random one).
+  useEffect(() => {
+    if (!initialId) return
+    Promise.all([
+      fetch(apiUrl(`/api/sessions/${initialId}`)).then((r) => (r.ok ? r.json() : null)),
+      fetch(apiUrl('/api/health')).then((r) => (r.ok ? r.json() : null)),
+    ]).then(([snap, health]) => {
+      const p = health?.personas?.find((x) => x.key === snap?.persona)
+      if (p) setWho({ name: p.name, tagline: p.tagline || '', avatar: p.avatar || '👵' })
+    }).catch(() => { /* keep the default card */ })
+  }, [initialId])
 
   // Keep the next script step on screen on small phones.
   useEffect(() => {
@@ -331,7 +343,7 @@ export default function PhoneApp({ sessionId: initialId }) {
         r.retries = 0
         r.voice = msg.voice
         setVoice(msg.voice)
-        setPersona(msg.persona)
+        if (msg.name) setWho({ name: msg.name, tagline: msg.tagline || '', avatar: msg.avatar || '👵' })
         setError('')
         if (msg.resumed) {
           setPhase('connected')
@@ -467,7 +479,7 @@ export default function PhoneApp({ sessionId: initialId }) {
 
   const live = phase === 'connected' || phase === 'reconnecting'
   const nextBeat = Math.min(beatsSent, DEMO_STEPS.length - 1)
-  const name = persona === 'dadi' ? 'Sharda Dadi' : 'Kamala Paatti'
+  const { name } = who
   return (
     <div className={`phone ${phase}`}>
       <div className="wa-header">
@@ -477,12 +489,12 @@ export default function PhoneApp({ sessionId: initialId }) {
 
       <div className="phone-top">
         <div className="avatar-wrapper">
-          <div className="avatar" aria-hidden="true">👵</div>
+          <div className="avatar" aria-hidden="true">{who.avatar}</div>
           {phase === 'connected' && <span className="avatar-live-badge">LIVE</span>}
         </div>
         <div className="phone-id">
           <h1 className="contact-name">{name}</h1>
-          <p className="phone-subtitle">Retired Teacher · Mylapore, Chennai</p>
+          {who.tagline && <p className="phone-subtitle">{who.tagline}</p>}
           <p className="phone-status">
             {phase === 'idle' && 'Tap Call to start'}
             {phase === 'ringing' && 'Ringing…'}
@@ -501,7 +513,7 @@ export default function PhoneApp({ sessionId: initialId }) {
               <div className="turn-indicator speaking" role="status">
                 <span className="speaker-wave-pulse" aria-hidden="true">🔊</span>
                 <div className="turn-text">
-                  <strong>Paatti is speaking…</strong>
+                  <strong>{name.split(' ').pop()} is speaking…</strong>
                   <span>Listen, then reply</span>
                 </div>
               </div>
@@ -518,7 +530,7 @@ export default function PhoneApp({ sessionId: initialId }) {
             {subtitle && (
               <div className={`live-speech-bubble ${paattiSpeaking ? 'active' : 'idle'}`}>
                 <div className="speech-bubble-header">
-                  <span className="bubble-speaker">👵 {name}</span>
+                  <span className="bubble-speaker">{who.avatar} {name}</span>
                   {paattiSpeaking && <span className="bubble-live-tag">Speaking</span>}
                 </div>
                 <p className="speech-bubble-content">“{subtitle}”</p>
@@ -572,7 +584,7 @@ export default function PhoneApp({ sessionId: initialId }) {
           {(phase === 'idle' || phase === 'ended' || phase === 'error') && (
             <div className="action-col">
               <button className="round call pulse-call" onClick={call} aria-label="Call">📞</button>
-              <span className="btn-label-primary">Call {name.split(' ')[1]}</span>
+              <span className="btn-label-primary">{phase === 'idle' ? 'Call' : 'Call again'}</span>
             </div>
           )}
           {(phase === 'ringing' || live) && (

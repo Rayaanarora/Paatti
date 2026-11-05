@@ -274,7 +274,9 @@ def test_browser_phone_text_fallback_without_sarvam():
     c = TestClient(app)
     sid = c.post("/api/sessions", json={"channel": "web-phone"}).json()["session_id"]
     with c.websocket_connect(f"/ws/phone/{sid}") as ws:
-        assert ws.receive_json() == {"type": "connected", "voice": False, "persona": "paatti", "resumed": False}
+        assert ws.receive_json() == {"type": "connected", "voice": False, "persona": "paatti", "resumed": False,
+                                     "name": "Kamala Paatti", "tagline": "Retired Teacher · Mylapore, Chennai",
+                                     "avatar": "👵"}
         assert receive_type(ws, "paatti_text")["text"]
         ws.send_json({"type": "text", "text": "This is CBI, your Aadhaar is in a case"})
         assert receive_type(ws, "paatti_text")["text"]

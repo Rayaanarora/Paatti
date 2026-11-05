@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 
 from .audio import mulaw_decode, mulaw_encode
 from .config import Settings
-from .personas import PROFILES
+from .personas import is_persona_choice
 from .sarvam import SarvamClient
 from .service import CallService, RateLimiter
 from .voice import VoiceCall
@@ -136,7 +136,7 @@ class TelephonyBridge:
             # The "scammer" is whoever is on the other end: caller (inbound) or callee (outbound).
             other_party = params.get("To") if outbound else params.get("From")
             persona = request.query_params.get("persona")
-            persona = persona if persona in PROFILES else None
+            persona = persona if is_persona_choice(persona) else None
             session = self.service.create_session(persona_key=persona, channel="phone", caller_id=other_party)
             return Response(self._twiml_stream(self._mint_token(session.id)), media_type="application/xml")
 
@@ -160,7 +160,7 @@ class TelephonyBridge:
             if to not in allowed:
                 raise HTTPException(status_code=403, detail="number not in PAATTI_OUTBOUND_ALLOWLIST")
             url = self._public("/telephony/twilio/voice")
-            if body.persona in PROFILES:
+            if is_persona_choice(body.persona):
                 url += "?" + urlencode({"persona": body.persona})
             http = self.http or httpx.AsyncClient(timeout=15)
             try:

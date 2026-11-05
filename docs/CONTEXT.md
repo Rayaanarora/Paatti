@@ -116,7 +116,7 @@ Channels                         Backend (FastAPI)                              
      4. **Gemini:** a call through the pool; the reply passes the output guard.
      5. **Script:** scripted line by stage, used as the fallback.
    - **Extraction (background):** Gemini JSON extraction runs, but only on turns with digits, `@` or money words.
-4. **Filler only when waiting:** scripted (demo), read-back, prepared and cached replies are instant and play straight away. Only if the model's first sentence takes longer than 0.6 s does **one** short pre-synthesised filler play. Audio is sent and played strictly in order, so a filler never overlaps the reply.
+4. **Filler only when waiting:** scripted (demo), read-back, prepared and cached replies are instant and play straight away. Only if the model's first sentence takes longer than 1.2 s does **one** short pre-synthesised filler play. Audio is sent and played strictly in order, so a filler never overlaps the reply.
 5. **Speak while the model writes:** Gemini streams its reply (`GeminiBackend.chat_stream`). Each complete sentence passes the output guard and goes to Sarvam text-to-speech immediately (`speech.speak_stream`), so Paatti starts talking after the model's first sentence rather than its whole reply. Chunks are sent in order. Text is normalised first ("..." becomes a short comma pause), and pace is 1.5× for a natural speaking speed (measured: the old 0.8–1.2× audio ran at 0.5–2 words/s versus about 2.5–3 for normal speech).
 6. **Persist:** everything is written through to SQLite.
 
@@ -303,7 +303,7 @@ Names only; never commit values. Template: `.env.example`. **The app does not re
 | `ANTHROPIC_API_KEY`, `PAATTI_PERSONA_MODEL`, `PAATTI_EXTRACTOR_MODEL`, `PAATTI_PERSONA_EFFORT`, `PAATTI_ANTHROPIC_DAILY_CAP` | — | Optional Claude backend |
 | `SARVAM_API_KEY` | — | Needed for voice channels |
 | `SARVAM_STT_MODEL` / `SARVAM_STT_MODE` | `saaras:v3` / `translit` | Speech-to-text |
-| `SARVAM_TTS_MODEL` / `SARVAM_TTS_SPEAKER` / `SARVAM_TTS_PACE` | `bulbul:v3` / `kavitha` / 1.75 | Text-to-speech (persona voice overrides speaker) |
+| `SARVAM_TTS_MODEL` / `SARVAM_TTS_SPEAKER` / `SARVAM_TTS_PACE` | `bulbul:v3` / `kavitha` / 2.0 (max) | Text-to-speech (persona voice overrides speaker) |
 | `SARVAM_TTS_SAMPLE_RATE`, `SARVAM_BASE_URL`, `SARVAM_DAILY_CAP` | unset / api.sarvam.ai / 2000 | |
 | `PAATTI_PERSONA` | `paatti` | Default persona (`dadi` = Hindi) |
 | `PAATTI_DEMO_MODE` | 1 | Rehearsed demo script (`docs/DEMO_SCRIPT.md`): scripted, pre-recorded instant replies; off-script lines use Gemini |

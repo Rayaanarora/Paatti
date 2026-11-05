@@ -33,7 +33,7 @@ A rehearsed, about 90-second call. Paatti's replies are **pre-recorded when the 
 - **Digits:** say them in groups of four ("five-zero-two-one, zero-zero-three-four…"). The read-back proves what was heard.
 - **Wording:** a different phrasing is fine. Each step is matched by key words (CBI/inspector → Aadhaar/case → arrest/warrant → transfer/immediately → yes/do it). If something is fully off-script, Paatti answers live with Gemini, which takes a couple of seconds and plays one short filler.
 - **Order:** the script only moves forward, so it never repeats a line.
-- **Pace:** if Paatti sounds too slow or too fast, change only `SARVAM_TTS_PACE` on the server (default `1.75`; try `1.6`–`2.0`) and restart. The pre-recordings regenerate at the new pace.
+- **Pace:** if Paatti sounds too slow or too fast, change only `SARVAM_TTS_PACE` on the server (default `2.0`, the fastest Bulbul v3 allows; try `1.6`–`1.9` for slower) and restart. The pre-recordings regenerate at the new pace.
 
 ## Sharda Dadi (Hindi) version
 Same scammer lines, but say "Sharda madam" in line 1. Her replies, in order:

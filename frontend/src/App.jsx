@@ -54,7 +54,12 @@ export default function App() {
 
       <main className="grid">
         <div className="col-left">
-          <Transcript turns={state.turns} pendingReadback={state.pendingReadback} speaking={call.speaking} />
+          <Transcript
+            turns={state.turns}
+            pendingReadback={state.pendingReadback}
+            speaking={call.speaking}
+            personaName={health?.personas?.find((p) => p.key === state.persona)?.name || 'Paatti'}
+          />
 
           <section className="panel controls" aria-label="Call controls">
             <div className="row">

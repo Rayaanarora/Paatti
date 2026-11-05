@@ -26,12 +26,12 @@ from .config import Settings
 from .db import Database, DbRepeatRegistry
 from .extractor import LLMExtractor
 from .persona import Persona
-from .personas import PROFILES
+from .personas import PROFILES, is_persona_choice
 from .report import GOLDEN_HOUR_S, build_report, render_pdf
 from .sarvam import SarvamClient, SarvamError
 from .service import CallService, Hub, RateLimiter, SessionStore
 from .telephony import TelephonyBridge
-from .voice import VoiceCall
+from .voice import FILLER_AFTER_S, VoiceCall
 
 log = logging.getLogger("paatti")
 
@@ -112,8 +112,9 @@ def create_app(
             "telephony": settings.telephony_enabled,
             "twilio_number": settings.twilio_number if settings.telephony_enabled else None,
             "public_url": settings.public_url,
-            "personas": [{"key": p.key, "name": p.name, "language": p.language_code} for p in PROFILES.values()],
-            "default_persona": settings.persona_key if settings.persona_key in PROFILES else "paatti",
+            "personas": [{"key": p.key, "name": p.name, "language": p.language_code, "tagline": p.tagline,
+                          "avatar": p.avatar} for p in PROFILES.values()],
+            "default_persona": settings.persona_key if is_persona_choice(settings.persona_key) else "paatti",
             "reply_sources": persona.stats,
             "cached_replies": len(persona.cache),
             "llm_pool": persona.backend.status() if hasattr(persona.backend, "status") else None,
@@ -370,7 +371,7 @@ def create_app(
         producer = asyncio.create_task(produce())
         try:
             try:  # instant replies play straight away; only a slow model reply gets ONE filler
-                first = await asyncio.wait_for(sentences.get(), 0.6)
+                first = await asyncio.wait_for(sentences.get(), FILLER_AFTER_S)
             except asyncio.TimeoutError:
                 send_filler(reply, s)
                 first = await sentences.get()
@@ -449,8 +450,9 @@ def create_app(
             call = VoiceCall(service, s, sarvam, in_rate=PHONE_RATE, out_rate=PHONE_RATE,
                              send_audio=send_audio, clear_audio=clear_audio, barge_in=False, echo_guard=True)
             call.start()
-        await send({"type": "connected", "voice": bool(sarvam), "persona": s.persona_key,
-                    "resumed": link["greeted"]})
+        profile = PROFILES[s.persona_key]
+        await send({"type": "connected", "voice": bool(sarvam), "persona": s.persona_key, "name": profile.name,
+                    "tagline": profile.tagline, "avatar": profile.avatar, "resumed": link["greeted"]})
 
         async def greet() -> None:
             if link["greeted"]:

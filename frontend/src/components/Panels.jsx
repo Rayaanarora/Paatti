@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { INTEL_CARDS, STAGES, cardStatus, formatClock, liveSeconds, stageIndex } from '../state.js'
 
-export function Transcript({ turns, pendingReadback, speaking }) {
+export function Transcript({ turns, pendingReadback, speaking, personaName = 'Paatti' }) {
   const end = useRef(null)
   useEffect(() => {
     // Block body on purpose: newer browsers return a Promise from scrollIntoView,
@@ -12,7 +12,7 @@ export function Transcript({ turns, pendingReadback, speaking }) {
     <section className="panel transcript" aria-label="Live transcript">
       <header className="panel-head">
         <h2>Live transcript</h2>
-        {speaking && <span className="pill pill-speaking">Paatti speaking</span>}
+        {speaking && <span className="pill pill-speaking">{personaName} speaking</span>}
       </header>
       <div className="turns" role="log" aria-live="polite">
         {turns.length === 0 && (
@@ -21,7 +21,7 @@ export function Transcript({ turns, pendingReadback, speaking }) {
         {turns.map((t) => (
           <div key={t.index} className={`bubble ${t.role}`}>
             <div className="who">
-              {t.role === 'scammer' ? 'Scammer' : 'Paatti'}
+              {t.role === 'scammer' ? 'Scammer' : personaName}
               <span className="ts">{formatClock(t.t)}</span>
             </div>
             <p>{t.text}</p>

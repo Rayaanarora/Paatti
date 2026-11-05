@@ -9,6 +9,7 @@ Targets from the validation plan:
 Usage:
   python evals/run_evals.py              # rules + scripted persona (offline)
   python evals/run_evals.py --llm        # also the LLM persona/extractor (needs GEMINI_API_KEY)
+  python evals/run_evals.py --persona all # every script against every persona
   python evals/run_evals.py --llm --runs 3   # pass@k / pass^k over repeated runs
   python evals/run_evals.py --out evals/results/latest.md
 """
@@ -30,6 +31,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from paatti.config import Settings  # noqa: E402
 from paatti.extractor import LLMExtractor  # noqa: E402
 from paatti.persona import Persona, guard_reply  # noqa: E402
+from paatti.personas import PROFILES  # noqa: E402
 from paatti.prepared import ReplyCache  # noqa: E402
 from paatti.report import build_report  # noqa: E402
 from paatti.session import CallSession, RepeatRegistry  # noqa: E402
@@ -53,12 +55,14 @@ def load_scripts(directory: Path) -> list[dict]:
     return [json.loads(p.read_text()) for p in sorted(directory.glob("*.json"))]
 
 
-async def run_script(script: dict, settings: Settings, use_llm: bool, registry: RepeatRegistry) -> ScriptResult:
+async def run_script(script: dict, settings: Settings, use_llm: bool, registry: RepeatRegistry,
+                     persona_key: str = "paatti") -> ScriptResult:
     # No reply cache in evals: we measure the live pipeline, not stored answers.
     persona = Persona(settings, use_backend=use_llm, cache=ReplyCache(None))
     extractor = LLMExtractor(settings) if use_llm else None
-    session = CallSession(registry)
-    res = ScriptResult(id=script["id"], title=script["title"])
+    session = CallSession(registry, persona_key=persona_key)
+    rid = script["id"] if persona_key == "paatti" else f"{script['id']}@{persona_key}"
+    res = ScriptResult(id=rid, title=script["title"])
 
     for line in script["turns"]:
         t0 = time.perf_counter()
@@ -104,15 +108,17 @@ async def run_script(script: dict, settings: Settings, use_llm: bool, registry: 
     return res
 
 
-async def run_all(scripts: list[dict], use_llm: bool, runs: int = 1) -> list[ScriptResult]:
+async def run_all(scripts: list[dict], use_llm: bool, runs: int = 1,
+                  personas: tuple[str, ...] = ("paatti",)) -> list[ScriptResult]:
     settings = Settings(demo_mode=False)  # grade the real pipeline, not the rehearsed demo script
     results = []
     for run in range(runs):
         registry = RepeatRegistry()  # fresh per run so repeat matches don't leak between runs
-        for s in scripts:
-            r = await run_script(s, settings, use_llm, registry)
-            r.id = f"{r.id}#{run + 1}" if runs > 1 else r.id
-            results.append(r)
+        for key in personas:
+            for s in scripts:
+                r = await run_script(s, settings, use_llm, registry, persona_key=key)
+                r.id = f"{r.id}#{run + 1}" if runs > 1 else r.id
+                results.append(r)
     return results
 
 
@@ -176,11 +182,17 @@ def main() -> int:
     ap.add_argument("--scripts", type=Path, default=ROOT / "evals" / "scripts")
     ap.add_argument("--out", type=Path)
     ap.add_argument("--runs", type=int, default=1, help="repeat each script N times (pass@k)")
+    ap.add_argument("--persona", default="paatti", help="persona key, or 'all' to run every persona")
     args = ap.parse_args()
     if args.llm and not Settings().llm_enabled:
         print("--llm needs GEMINI_API_KEY (or ANTHROPIC_API_KEY)", file=sys.stderr)
         return 2
-    results = asyncio.run(run_all(load_scripts(args.scripts), args.llm, max(1, args.runs)))
+    personas = tuple(PROFILES) if args.persona == "all" else (args.persona,)
+    unknown = [p for p in personas if p not in PROFILES]
+    if unknown:
+        print(f"unknown persona {unknown[0]!r}; choose from: all, {', '.join(PROFILES)}", file=sys.stderr)
+        return 2
+    results = asyncio.run(run_all(load_scripts(args.scripts), args.llm, max(1, args.runs), personas))
     mode = f"{Settings().llm_provider} + rules" if args.llm else "rules + scripted persona"
     report, passed = summarise(results, mode)
     print(report)

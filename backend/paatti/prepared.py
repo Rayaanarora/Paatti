@@ -102,7 +102,9 @@ class IntentResponder:
         intent = detect_intent(text)
         if not intent:
             return None
-        lines = INTENT_LINES.get(persona, INTENT_LINES["paatti"])[intent]
+        from .personas import get_profile  # local: personas imports nothing from here
+
+        lines = get_profile(persona).intents.get(intent) or INTENT_LINES.get(persona, INTENT_LINES["paatti"])[intent]
         if len(self._cycles) > 2000:
             self._cycles.clear()  # bounded memory
         key = (session_id, persona, intent)

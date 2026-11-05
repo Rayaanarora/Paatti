@@ -113,6 +113,11 @@ class SarvamClient:
             resp = await self.http.post("/text-to-speech", headers=self._headers, json=body)
         except httpx.HTTPError as e:
             raise SarvamError(f"text-to-speech unreachable ({type(e).__name__})") from e
+        fallback = self.settings.tts_speaker
+        if resp.status_code in (400, 422) and speaker and speaker != fallback:
+            # A persona voice the account/model doesn't offer: speak with the default voice rather than go silent.
+            log.warning("Sarvam rejected speaker %r (HTTP %s); using %r", speaker, resp.status_code, fallback)
+            return await self.synthesize(text, language_code=language_code, speaker=fallback)
         if resp.status_code != 200:
             log.warning("Sarvam TTS HTTP %s", resp.status_code)
             raise SarvamError(f"text-to-speech failed ({resp.status_code}{_detail(resp)})")

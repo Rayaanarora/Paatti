@@ -97,7 +97,10 @@ export function PhoneDemo({ health, onCreate }) {
       <div className="row">
         <label className="check">Persona
           <select value={persona} onChange={(e) => setPersona(e.target.value)}>
-            {(health?.personas || [{ key: 'paatti', name: 'Kamala Paatti' }]).map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
+            <option value="random">Random (new grandparent every call)</option>
+            {(health?.personas || [{ key: 'paatti', name: 'Kamala Paatti' }]).map((p) => (
+              <option key={p.key} value={p.key}>{p.name}{p.tagline ? ` · ${p.tagline.split(' · ').pop()}` : ''}</option>
+            ))}
           </select>
         </label>
         <button className="btn" onClick={makeQr}>Phone call via QR</button>

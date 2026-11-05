@@ -25,6 +25,27 @@ Needs [Python 3.11+](https://www.python.org/downloads/) and [Node.js LTS](https:
 
 It installs everything, starts Paatti, creates a public HTTPS link (so the phone mic works) and opens it in your browser. Open that link on the laptop, click **Phone call via QR**, and scan with the phone. Keep the window open during the demo. Optional keys for AI replies and real voice go in `.env` (created on the first run).
 
+## Personas
+
+Twelve grandparents, each with their own language, region, backstory and voice, so a repeat caller never meets the same person twice. Pick one on the dashboard, or choose **Random** (or set `PAATTI_PERSONA=random`) for a different one every call.
+
+| Key | Persona | Language | From |
+|---|---|---|---|
+| `paatti` | Kamala Paatti | Tamil | Mylapore, Chennai |
+| `thatha` | Rangasamy Thatha (male) | Kongu Tamil | Coimbatore |
+| `dadi` | Sharda Dadi | Hindi | Lucknow |
+| `dadaji` | Ramesh Chand Dadaji (male) | Hindi, Marwari touch | Jaipur |
+| `ammamma` | Lakshmi Ammamma | Telugu | Vijayawada |
+| `ajji` | Shantamma Ajji | Kannada | Mysuru |
+| `ammachi` | Mariamma Ammachi | Malayalam | Kottayam |
+| `thakuma` | Bani Thakuma | Bengali | Kolkata |
+| `aaji` | Sulabha Aaji | Marathi | Pune |
+| `ba` | Hansaben Ba | Gujarati | Ahmedabad |
+| `bauji` | Harbhajan Singh Bauji (male) | Punjabi | Ludhiana |
+| `uncle` | Joseph Uncle (male) | Goan English | Margao, Goa |
+
+`python evals/run_evals.py --persona all` runs every scam script against every persona.
+
 ## Features
 
 | | |

@@ -18,7 +18,7 @@ from fastapi import HTTPException
 from .config import Settings
 from .extractor import LLMExtractor
 from .persona import Persona
-from .personas import PROFILES
+from .personas import resolve_persona
 from .session import CallSession, RepeatRegistry
 
 log = logging.getLogger(__name__)
@@ -142,9 +142,7 @@ class CallService:
 
     def create_session(self, *, persona_key: str | None = None, channel: str = "web",
                        caller_id: str | None = None) -> CallSession:
-        key = persona_key if persona_key in PROFILES else self.settings.persona_key
-        if key not in PROFILES:
-            key = "paatti"
+        key = resolve_persona(persona_key, default=resolve_persona(self.settings.persona_key))
         s = self.store.create(persona_key=key, channel=channel if channel in CHANNELS else "web", caller_id=caller_id)
         self.persist(s)
         self.hub.publish("*", {"type": "session_created", "session": s.snapshot()})

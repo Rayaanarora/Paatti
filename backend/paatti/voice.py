@@ -27,7 +27,7 @@ from .session import CallSession
 log = logging.getLogger(__name__)
 
 STT_RATE = 16000
-FILLER_AFTER_S = 0.6  # only a slow (model) reply gets a filler; instant replies never do
+FILLER_AFTER_S = 1.2  # a filler only covers a genuinely slow (model) reply; most replies never need one
 
 
 class TTSCache:

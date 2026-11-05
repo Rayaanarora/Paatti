@@ -26,7 +26,10 @@ def test_health_reports_offline_modes(client):
     assert {k: h[k] for k in ("status", "persona", "extractor", "voice", "telephony")} == {
         "status": "ok", "persona": "scripted", "extractor": "rules", "voice": "browser", "telephony": False,
     }
-    assert {p["key"] for p in h["personas"]} == {"paatti", "dadi"}
+    from paatti.personas import PROFILES
+
+    assert {p["key"] for p in h["personas"]} == set(PROFILES) and {"paatti", "dadi"} <= set(PROFILES)
+    assert all(p["tagline"] and p["avatar"] for p in h["personas"])
 
 
 def test_text_turn_flow_and_readback(client):

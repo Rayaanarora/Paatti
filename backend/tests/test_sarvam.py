@@ -94,3 +94,43 @@ async def test_error_message_from_sarvam_is_surfaced():
     c = make_client(lambda r: httpx.Response(400, json={"error": {"message": "Unsupported audio format"}}))
     with pytest.raises(SarvamError, match="Unsupported audio format"):
         await c.transcribe(b"a")
+
+
+@pytest.mark.asyncio
+async def test_speech_is_fast_by_default_and_pace_is_clamped(monkeypatch):
+    seen = {}
+
+    def handler(request):
+        seen.update(json.loads(request.content))
+        return httpx.Response(200, json={"audios": [base64.b64encode(FAKE_WAV).decode()]})
+
+    monkeypatch.delenv("SARVAM_TTS_PACE", raising=False)  # ignore any local .env
+    c = SarvamClient(Settings(sarvam_api_key="k", audio_cache_dir=None),
+                     http=httpx.AsyncClient(base_url="https://s.test", transport=httpx.MockTransport(handler)))
+    await c.synthesize("Aiyo kanna")
+    assert seen["pace"] == 2.0  # Bulbul v3's fastest
+    monkeypatch.setenv("SARVAM_TTS_PACE", "3.5")
+    assert Settings().tts_pace == 2.0
+    monkeypatch.setenv("SARVAM_TTS_PACE", "0.1")
+    assert Settings().tts_pace == 0.5
+
+
+@pytest.mark.asyncio
+async def test_unknown_persona_voice_falls_back_to_default_speaker():
+    speakers = []
+
+    def handler(request):
+        body = json.loads(request.content)
+        speakers.append(body["speaker"])
+        if body["speaker"] != "kavitha":
+            return httpx.Response(400, json={"error": {"message": "invalid speaker"}})
+        return httpx.Response(200, json={"audios": [base64.b64encode(FAKE_WAV).decode()]})
+
+    c = SarvamClient(Settings(sarvam_api_key="k", audio_cache_dir=None),
+                     http=httpx.AsyncClient(base_url="https://s.test", transport=httpx.MockTransport(handler)))
+    assert await c.synthesize("Namaskara", language_code="kn-IN", speaker="ritu") == FAKE_WAV
+    assert speakers == ["ritu", "kavitha"]
+    failing = SarvamClient(Settings(sarvam_api_key="k", audio_cache_dir=None), http=httpx.AsyncClient(
+        base_url="https://s.test", transport=httpx.MockTransport(lambda r: httpx.Response(400, json={}))))
+    with pytest.raises(SarvamError):  # the default voice itself failing is still an error
+        await failing.synthesize("x", speaker="kavitha")
