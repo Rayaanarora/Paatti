@@ -140,26 +140,57 @@ export function useCall() {
     }
   }
 
+  // One live socket per watched call. If it drops (Wi-Fi blip, proxy idle timeout, laptop
+  // sleep) it reopens by itself; the server replays the state and every turn on join, and
+  // the reducer skips turns it already has, so nothing is lost or duplicated.
+  const link = useRef({ id: null, retries: 0, timer: null, ping: null, ended: false })
+
   const connect = useCallback((snap) => {
-    ws.current?.close()
+    const l = link.current
+    clearTimeout(l.timer)
+    clearInterval(l.ping)
+    const old = ws.current
+    ws.current = null
+    old?.close()
+    l.id = snap.session_id
+    l.retries = 0
+    l.ended = Boolean(snap.ended)
     dispatch({ type: 'session', state: snap })
+    open(snap)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notice, speak, playWav])
+
+  const open = (snap) => {
+    const l = link.current
     const sock = new WebSocket(wsUrl(`/ws/sessions/${snap.session_id}`))
     ws.current = sock
-    sock.onopen = () => dispatch({ type: 'connected', value: true })
+    sock.onopen = () => {
+      if (ws.current !== sock) return
+      l.retries = 0
+      dispatch({ type: 'connected', value: true })
+      clearInterval(l.ping)
+      l.ping = setInterval(() => send({ type: 'tick' }), 15000) // keepalive + state refresh
+    }
     sock.onclose = (ev) => {
-      if (ws.current === sock) dispatch({ type: 'connected', value: false })
+      if (ws.current !== sock) return
+      clearInterval(l.ping)
+      dispatch({ type: 'connected', value: false })
       if (ev.code === 4404) {
         notice('Previous session expired. Click "New call" or scan a new QR code.', 'warn')
+        return
       }
-    }
-    sock.onerror = () => {
-      // Browsers don't give error details to onerror; only notify if sock hasn't gracefully closed with 4404
-      if (sock.readyState === WebSocket.OPEN) {
-        notice('Live connection issue. Refresh or check connection.', 'error')
-      }
+      if (l.ended || l.id !== snap.session_id) return
+      l.retries += 1
+      if (l.retries === 3) notice('Live connection lost; reconnecting…', 'warn')
+      l.timer = setTimeout(() => {
+        if (ws.current === sock && l.id === snap.session_id) open(snap)
+      }, Math.min(8000, 500 * 2 ** l.retries))
     }
     sock.onmessage = (ev) => {
+      if (ws.current !== sock) return
       const msg = JSON.parse(ev.data)
+      if (msg.type === 'state' && msg.state?.ended) l.ended = true
+      if (msg.type === 'ended') l.ended = true
       if (msg.type === 'turn') {
         dispatch({ type: 'turn', turn: msg.turn })
         if (msg.turn.role === 'paatti' && live.current.voiceMode === 'browser' && snap.channel === 'web') speak(msg.turn.text)
@@ -168,7 +199,7 @@ export function useCall() {
       else if (msg.type === 'notice') notice(msg.message, 'warn')
       else if (msg.type === 'error') notice(msg.message, 'error')
     }
-  }, [notice, speak, playWav])
+  }
 
   /** Create a new call. channel 'web' = dashboard-driven, 'web-phone' = a mobile joins via QR. */
   const create = useCallback(async ({ channel = 'web', persona } = {}) => {
@@ -306,7 +337,13 @@ export function useCall() {
   }, [send, stopListening])
 
   useEffect(() => () => {
-    ws.current?.close()
+    const l = link.current
+    l.id = null
+    clearTimeout(l.timer)
+    clearInterval(l.ping)
+    const sock = ws.current
+    ws.current = null
+    sock?.close()
     stopMic()
   }, [stopMic])
 

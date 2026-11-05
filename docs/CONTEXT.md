@@ -172,6 +172,7 @@ Channels                         Backend (FastAPI)                              
 - **Turn handling:** bounded utterance queue (2), so floods are dropped. Greeting on answer; fillers pre-synthesised and cached (LRU of 128).
 - **Twilio line:** barge-in clears Paatti's audio when the caller talks over her.
 - **Browser phone:** echo guard ignores the mic while Paatti plays, plus 250 ms. The phone sends `answered` after the ringback, so the greeting lines up with the guard.
+- **Dropped connections:** if the phone loses its socket (screen lock, network switch) the call is held for 30 s and the phone rejoins the same call without a second greeting; only End ends it. The phone also keeps its mic closed while Paatti's audio is actually playing, so she never answers her own voice. The laptop dashboard reconnects by itself and replays the transcript.
 
 ### 6.6 Database (`db.py`) — see `docs/DATABASE.md` for the ER diagram
 - **Tables:**

@@ -36,6 +36,7 @@ from .voice import VoiceCall
 log = logging.getLogger("paatti")
 
 PHONE_RATE = 16000  # browser phone streams 16 kHz PCM16
+PHONE_RECONNECT_GRACE_S = 30.0  # a dropped phone may rejoin its call within this window
 
 
 class TurnIn(BaseModel):
@@ -387,6 +388,19 @@ def create_app(
             await producer
 
     # ---- browser phone: a mobile becomes the "scammer's phone" ----------------
+    # A phone can drop its socket (screen lock, network switch, tab in background). The call is
+    # kept alive for PHONE_RECONNECT_GRACE_S so the phone can rejoin the same session; only an
+    # explicit hangup (or the grace running out) ends it.
+    app.state.phone_grace_s = PHONE_RECONNECT_GRACE_S
+    phone_links: dict[str, dict] = {}  # session id -> {"greeted", "gen", "end_task"}
+    PHONE_FORWARD = ("turn", "notice", "ended")  # hub events the phone screen uses
+
+    async def end_phone_later(s, link: dict, gen: int) -> None:
+        await asyncio.sleep(app.state.phone_grace_s)
+        if link["gen"] == gen and s.ended_at is None:
+            service.end(s)
+        phone_links.pop(s.id, None)
+
     @app.websocket("/ws/phone/{session_id}")
     async def phone_socket(ws: WebSocket, session_id: str) -> None:
         s = store.find(session_id)
@@ -394,6 +408,12 @@ def create_app(
             await ws.close(code=4404)
             return
         await ws.accept()
+        link = phone_links.setdefault(s.id, {"greeted": False, "gen": 0, "end_task": None})
+        if link["end_task"]:  # the phone came back inside the grace period
+            link["end_task"].cancel()
+            link["end_task"] = None
+        link["gen"] += 1
+        gen = link["gen"]
         send_lock = asyncio.Lock()
 
         async def send(msg: dict) -> None:
@@ -403,14 +423,15 @@ def create_app(
                 except Exception:
                     pass
 
-        # Subscribe phone to the same session hub as the laptop so turns & states sync both ways
+        # Same session hub as the laptop: the phone shows Paatti's lines and notices live.
         q = hub.subscribe(s.id)
 
         async def pump() -> None:
             try:
                 while True:
                     event = await q.get()
-                    await send(event)
+                    if event.get("type") in PHONE_FORWARD:
+                        await send(event)
             except asyncio.CancelledError:
                 pass
 
@@ -428,20 +449,20 @@ def create_app(
             call = VoiceCall(service, s, sarvam, in_rate=PHONE_RATE, out_rate=PHONE_RATE,
                              send_audio=send_audio, clear_audio=clear_audio, barge_in=False, echo_guard=True)
             call.start()
-        await send({"type": "connected", "voice": bool(sarvam), "persona": s.persona_key})
-        greeted = False
+        await send({"type": "connected", "voice": bool(sarvam), "persona": s.persona_key,
+                    "resumed": link["greeted"]})
 
         async def greet() -> None:
-            nonlocal greeted
-            if greeted:
+            if link["greeted"]:
                 return
-            greeted = True
+            link["greeted"] = True
             if call:
                 await call.greet()
             else:
                 turn = service.say(s, PROFILES[s.persona_key].greeting)
                 await send({"type": "paatti_text", "text": turn["text"], "lang": PROFILES[s.persona_key].language_code})
 
+        hung_up = False
         try:
             if call:
                 await call.warm()
@@ -449,14 +470,16 @@ def create_app(
                 try:
                     # The phone rings for a few seconds, then says "answered": greet then, so the
                     # greeting plays when the echo guard expects it. Fallback: greet after 5 s.
-                    msg = await (ws.receive_json() if greeted else asyncio.wait_for(ws.receive_json(), 5))
+                    msg = await (ws.receive_json() if link["greeted"] else asyncio.wait_for(ws.receive_json(), 5))
                 except asyncio.TimeoutError:
                     await greet()
                     continue
                 kind = msg.get("type") if isinstance(msg, dict) else None
                 if kind == "answered":
                     await greet()
-                elif kind == "pcm" and call and greeted:
+                elif kind == "ping":
+                    await send({"type": "pong"})
+                elif kind == "pcm" and call and link["greeted"]:
                     data = decode_b64(msg, 512 * 1024)
                     if data:
                         s.add_audio_chunk(data)
@@ -467,6 +490,7 @@ def create_app(
                         try:
                             paatti = await service.respond(s, text)
                         except HTTPException:
+                            hung_up = True
                             break
                         if call:
                             await call.play(paatti["text"])
@@ -474,6 +498,7 @@ def create_app(
                             await send({"type": "paatti_text", "text": paatti["text"],
                                         "lang": PROFILES[s.persona_key].language_code})
                 elif kind == "hangup":
+                    hung_up = True
                     break
         except WebSocketDisconnect:
             pass
@@ -482,7 +507,12 @@ def create_app(
             hub.unsubscribe(s.id, q)
             if call:
                 await call.close()
-            service.end(s)
+            if hung_up or s.ended_at is not None:
+                if s.ended_at is None:
+                    service.end(s)
+                phone_links.pop(s.id, None)
+            elif link["gen"] == gen:  # dropped, not hung up: wait for the phone to rejoin
+                link["end_task"] = asyncio.create_task(end_phone_later(s, link, gen))
 
     candidates = [Path(p) for p in (os.getenv("PAATTI_STATIC_DIR"),) if p]
     candidates += [Path(__file__).resolve().parents[2] / "frontend" / "dist", Path.cwd().parent / "frontend" / "dist"]

@@ -274,13 +274,74 @@ def test_browser_phone_text_fallback_without_sarvam():
     c = TestClient(app)
     sid = c.post("/api/sessions", json={"channel": "web-phone"}).json()["session_id"]
     with c.websocket_connect(f"/ws/phone/{sid}") as ws:
-        assert ws.receive_json() == {"type": "connected", "voice": False, "persona": "paatti"}
-        assert ws.receive_json()["type"] == "paatti_text"
+        assert ws.receive_json() == {"type": "connected", "voice": False, "persona": "paatti", "resumed": False}
+        assert receive_type(ws, "paatti_text")["text"]
         ws.send_json({"type": "text", "text": "This is CBI, your Aadhaar is in a case"})
-        assert ws.receive_json()["type"] == "paatti_text"
+        assert receive_type(ws, "paatti_text")["text"]
         ws.send_json({"type": "hangup"})
     s = app.state.store.get(sid)
     assert s.channel == "web-phone" and s.ended_at is not None and s.intel.claimed_agency.value == "CBI"
+
+
+def receive_type(ws, kind, limit=20):
+    """Next message of one type; hub events (turn, notice) are interleaved with it."""
+    for _ in range(limit):
+        msg = ws.receive_json()
+        if msg["type"] == kind:
+            return msg
+    raise AssertionError(f"no {kind} message")
+
+
+def test_browser_phone_gets_paatti_turns_and_pong():
+    app = create_app(Settings())
+    c = TestClient(app)
+    sid = c.post("/api/sessions", json={"channel": "web-phone"}).json()["session_id"]
+    with c.websocket_connect(f"/ws/phone/{sid}") as ws:
+        ws.receive_json()
+        ws.send_json({"type": "answered"})
+        assert receive_type(ws, "turn")["turn"]["role"] == "paatti"  # greeting, for the subtitle
+        ws.send_json({"type": "ping"})
+        assert receive_type(ws, "pong") == {"type": "pong"}
+        ws.send_json({"type": "hangup"})
+
+
+def test_dropped_phone_can_rejoin_the_same_call_without_a_second_greeting():
+    app = create_app(Settings())
+    with TestClient(app) as c:
+        sid = c.post("/api/sessions", json={"channel": "web-phone"}).json()["session_id"]
+        with c.websocket_connect(f"/ws/phone/{sid}") as ws:
+            ws.receive_json()
+            ws.send_json({"type": "answered"})
+            receive_type(ws, "paatti_text")
+        s = app.state.store.get(sid)
+        assert s.ended_at is None  # dropped, not hung up: the call waits for the phone
+        with c.websocket_connect(f"/ws/phone/{sid}") as ws:
+            assert ws.receive_json()["resumed"] is True
+            ws.send_json({"type": "answered"})
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json()["type"] == "pong"  # no second greeting before it
+            ws.send_json({"type": "hangup"})
+        assert s.ended_at is not None
+        assert [t.role for t in s.turns] == ["paatti"]
+
+
+def test_dropped_phone_call_ends_after_the_grace_period():
+    import time
+
+    app = create_app(Settings())
+    app.state.phone_grace_s = 0.05
+    with TestClient(app) as c:
+        sid = c.post("/api/sessions", json={"channel": "web-phone"}).json()["session_id"]
+        with c.websocket_connect(f"/ws/phone/{sid}") as ws:
+            ws.receive_json()
+            ws.send_json({"type": "answered"})
+            receive_type(ws, "paatti_text")
+        s = app.state.store.get(sid)
+        for _ in range(50):
+            if s.ended_at is not None:
+                break
+            time.sleep(0.02)
+        assert s.ended_at is not None
 
 
 def test_browser_phone_with_voice_streams_audio():
@@ -290,7 +351,7 @@ def test_browser_phone_with_voice_streams_audio():
     sid = c.post("/api/sessions", json={"channel": "web-phone", "persona": "dadi"}).json()["session_id"]
     with c.websocket_connect(f"/ws/phone/{sid}") as ws:
         assert ws.receive_json()["voice"] is True
-        assert ws.receive_json()["type"] == "audio"  # greeting
+        assert receive_type(ws, "audio")  # greeting
         import time
 
         time.sleep(0.5)  # echo guard ignores the mic while the greeting plays
