@@ -204,3 +204,47 @@ async def test_warmup_call_does_not_retry_and_keeps_sarvams_message():
     with pytest.raises(SarvamError):
         await c.synthesize("Hello kanna", retry_429=False)
     assert c.status()["last_error"]["detail"] == "Rate limit exceeded"
+
+
+def test_v2_only_speaker_left_in_the_dashboard_falls_back_to_a_v3_voice(monkeypatch):
+    monkeypatch.setenv("SARVAM_TTS_SPEAKER", "anushka")
+    monkeypatch.setenv("SARVAM_TTS_MODEL", "bulbul:v3")
+    assert Settings().tts_speaker == "kavitha"
+    monkeypatch.setenv("SARVAM_TTS_SPEAKER", "roopa")
+    assert Settings().tts_speaker == "roopa"
+
+
+async def test_live_reply_retries_twice_before_giving_up():
+    hits = []
+
+    def handler(r):
+        hits.append(1)
+        if len(hits) <= 2:
+            return httpx.Response(429, headers={"retry-after": "0.5"}, json={"error": {"message": "Rate limit exceeded"}})
+        return httpx.Response(200, json={"audios": [base64.b64encode(FAKE_WAV).decode()]})
+
+    c = make_client(handler)
+    assert await c.synthesize("Hello kanna") == FAKE_WAV and len(hits) == 3
+
+
+async def test_throttle_keeps_requests_under_our_per_minute_cap(monkeypatch):
+    import paatti.sarvam as sv
+
+    settings = Settings(sarvam_api_key="k", sarvam_rpm=4, phone_line=False, tts_speedup=1.0,
+                        tts_max_gap_ms=0, audio_cache_dir=None)
+    c = SarvamClient(settings, http=httpx.AsyncClient(base_url="https://sarvam.test", transport=httpx.MockTransport(
+        lambda r: httpx.Response(200, json={"audios": [base64.b64encode(FAKE_WAV).decode()]}))))
+    slept = []
+
+    async def fake_sleep(s):
+        slept.append(s)
+        now = sv.time.monotonic()
+        c._hits = type(c._hits)(t - 61 for t in c._hits)  # pretend a minute passed
+
+    monkeypatch.setattr(sv.asyncio, "sleep", fake_sleep)
+    for i in range(4):
+        await c.synthesize(f"line {i}")
+    assert slept == []                                   # under the cap: no waiting
+    await c.synthesize("line 5")
+    assert slept                                         # over the cap: waits instead of a 429
+    assert c.status()["per_minute_cap"] == 4

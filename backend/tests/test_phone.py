@@ -165,14 +165,16 @@ async def test_tts_failure_publishes_notice_and_greeting_is_a_turn():
     assert any(m["type"] == "notice" for m in msgs) and not sent
 
 
-async def test_warm_caches_fillers():
+async def test_warm_caches_only_the_greeting_and_fillers_on_first_use():
     service = make_service()
     sarvam = FakeSarvam()
     _, call, _, _ = make_call(service, sarvam)
     await call.warm()
-    n = len(sarvam.spoken)
+    assert sarvam.spoken == [call.profile.greeting]  # one Sarvam request per call start, not five
+    await call.play(call.profile.greeting, cache=True)
     await call.play(call.profile.fillers[0], cache=True)
-    assert len(sarvam.spoken) == n  # served from cache
+    await call.play(call.profile.fillers[0], cache=True)
+    assert sarvam.spoken == [call.profile.greeting, call.profile.fillers[0]]  # each made once, then cached
 
 
 # ---- Twilio ---------------------------------------------------------------

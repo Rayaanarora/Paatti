@@ -31,7 +31,7 @@ def test_decimals_and_ellipses():
 
 def test_long_sentence_is_capped():
     text = ("kanna " * 60).strip() + "."
-    assert all(len(c) <= 170 for c in split_for_tts(text))
+    assert all(len(c) <= 310 for c in split_for_tts(text))
 
 
 class FakeTTS:

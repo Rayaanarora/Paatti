@@ -114,8 +114,8 @@ class VoiceCall:
     async def warm(self) -> None:
         """Pre-synthesise greeting and fillers so they play instantly (demo lines are
         warmed into the disk cache at server startup)."""
-        lines = [self.profile.greeting, *self.profile.fillers[:3], *(self.profile.unclear[:1])]
-        for t in lines:  # one at a time: a burst of parallel requests trips Sarvam's rate limit
+        lines = [self.profile.greeting]  # fillers are made on first use: each clip costs a Sarvam request
+        for t in lines:
             try:
                 await self._tts(t, cache=True)
             except (SarvamError, ValueError, EOFError, wave.Error):

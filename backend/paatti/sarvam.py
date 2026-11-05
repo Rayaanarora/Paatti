@@ -14,6 +14,7 @@ import wave
 import hashlib
 import logging
 import time
+from collections import deque
 from pathlib import Path
 
 import httpx
@@ -46,14 +47,37 @@ class SarvamClient:
         self._day = time.strftime("%Y-%m-%d")
         self.calls_today = 0
         self.last_error: dict | None = None  # {"status", "at", "what"}: surfaced in /api/health
+        self._hits: deque[float] = deque()     # request times in the last minute (our own rate limit)
         self.http = http or httpx.AsyncClient(base_url=settings.sarvam_base_url, timeout=15)
 
     def _note(self, status: int, what: str, detail: str = "") -> None:
         self.last_error = {"status": status, "at": time.time(), "what": what, "detail": detail.lstrip(": ")}
 
     def status(self) -> dict:
+        self._prune(time.monotonic())
         return {"calls_today": self.calls_today, "daily_cap": self.settings.sarvam_daily_cap,
+                "last_minute": len(self._hits), "per_minute_cap": self.settings.sarvam_rpm,
                 "last_error": self.last_error}
+
+    def _prune(self, now: float) -> None:
+        while self._hits and now - self._hits[0] > 60:
+            self._hits.popleft()
+
+    async def _throttle(self, background: bool = False) -> None:
+        """Stay under Sarvam's per-minute limit by waiting instead of failing. Live requests wait
+        at most a few seconds (then go anyway); background warm-up only uses half the budget."""
+        limit = self.settings.sarvam_rpm
+        cap = max(1, limit // 2) if background else limit
+        waited = 0.0
+        while True:
+            now = time.monotonic()
+            self._prune(now)
+            if len(self._hits) < cap or (not background and waited >= 4.0):
+                self._hits.append(now)
+                return
+            step = 2.0 if background else min(0.5, max(0.05, 60 - (now - self._hits[0])))
+            await asyncio.sleep(step)
+            waited += step
 
     def _spend(self) -> None:
         today = time.strftime("%Y-%m-%d")
@@ -78,6 +102,7 @@ class SarvamClient:
     async def transcribe(self, audio: bytes, filename: str = "turn.wav", mime: str = "audio/wav") -> str:
         """Speech-to-text on one caller utterance (Tamil/English code-mixed)."""
         self._spend()
+        await self._throttle()
         clean_mime = (mime or "audio/wav").split(";")[0].strip().lower()
         if not filename or filename == "turn.wav":
             if "webm" in clean_mime:
@@ -105,7 +130,7 @@ class SarvamClient:
         return str(resp.json().get("transcript", "")).strip()
 
     async def synthesize(self, text: str, language_code: str = "ta-IN", speaker: str | None = None,
-                         retry_429: bool = True) -> bytes:
+                         retry_429: bool = True, _attempt: int = 0) -> bytes:
         """Text-to-speech in a slow, elderly voice. Returns WAV bytes."""
         text = normalize_for_tts(text)  # '...' -> short pause: natural pacing
         cached = self.cached(text, language_code, speaker)
@@ -113,6 +138,7 @@ class SarvamClient:
             return self._on_line(cached)
 
         self._spend()
+        await self._throttle(background=not retry_429)
         body = {
             "text": text[:1500],
             "target_language_code": language_code,
@@ -131,14 +157,16 @@ class SarvamClient:
             # A persona voice the account/model doesn't offer: speak with the default voice rather than go silent.
             log.warning("Sarvam rejected speaker %r (HTTP %s); using %r", speaker, resp.status_code, fallback)
             return await self.synthesize(text, language_code=language_code, speaker=fallback)
-        if resp.status_code == 429 and retry_429:
-            # A live reply: one quick retry rides out a short rate-limit blip.
+        if resp.status_code == 429 and retry_429 and _attempt < 2:
+            # A live reply: retry twice (about 1 s, then 2 s) so a short rate-limit blip still ends
+            # in her Sarvam voice rather than the phone's fallback voice.
             try:
-                wait = min(2.0, max(0.3, float(resp.headers.get("retry-after", "0.8"))))
+                wait = min(3.0, max(0.5, float(resp.headers.get("retry-after", "0"))))
             except ValueError:
-                wait = 0.8
-            await asyncio.sleep(wait)
-            return await self.synthesize(text, language_code=language_code, speaker=speaker, retry_429=False)
+                wait = 0.0
+            await asyncio.sleep(wait or (1.0 * (_attempt + 1)))
+            return await self.synthesize(text, language_code=language_code, speaker=speaker,
+                                         retry_429=True, _attempt=_attempt + 1)
         if resp.status_code != 200:
             self._note(resp.status_code, "text-to-speech", _detail(resp))
             log.warning("Sarvam TTS HTTP %s%s", resp.status_code, _detail(resp))

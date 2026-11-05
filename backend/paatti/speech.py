@@ -18,8 +18,9 @@ _SENTENCE = re.compile(r"(?<=[.!?…])\s+")
 _CLAUSE = re.compile(r"(?<=[,;:])\s+")
 
 FIRST_MIN = 12   # first chunk: as short as possible, but a real phrase
-MIN_LEN = 40     # later chunks: big enough to sound natural
-MAX_LEN = 160    # never send a huge chunk
+MIN_LEN = 120    # later chunks: big, so a reply costs few Sarvam requests (its rate limit is tight)
+MAX_LEN = 300    # never send a huge chunk
+SENTENCE_MIN = 20  # streamed LLM text: shortest sentence worth emitting on its own
 MAX_PARALLEL = 2  # parallel TTS requests per reply: more trips Sarvam's per-minute rate limit
 
 
@@ -120,7 +121,7 @@ class SentenceStreamer:
         self.buf += delta
         out: list[str] = []
         while True:
-            target = FIRST_MIN if self.emitted == 0 and not out else MIN_LEN // 2
+            target = FIRST_MIN if self.emitted == 0 and not out else SENTENCE_MIN
             cut = None
             for m in self._BOUNDARY.finditer(self.buf):
                 if m.end() >= target and m.end() < len(self.buf):  # need text after it (not mid-"4.5")
@@ -151,10 +152,27 @@ async def speak_stream(sentences: AsyncIterator[str], tts: TTS, language_code: s
             return await tts.synthesize(chunk, language_code=language_code, speaker=speaker)
 
     async def producer() -> None:
+        # The first sentence goes alone so she starts speaking at once; everything after it is
+        # batched into one request while the first plays. At most ~2 Sarvam requests per reply.
+        rest: list[str] = []
+
+        async def put(text: str) -> None:
+            for chunk in split_for_tts(text) or []:
+                await order.put((chunk, asyncio.create_task(one(chunk))))
+
         try:
+            first = True
             async for sentence in sentences:
-                for chunk in split_for_tts(sentence) or []:
-                    await order.put((chunk, asyncio.create_task(one(chunk))))
+                if first:
+                    first = False
+                    await put(sentence)
+                    continue
+                rest.append(sentence)
+                if len(" ".join(rest)) >= MAX_LEN:
+                    await put(" ".join(rest))
+                    rest = []
+            if rest:
+                await put(" ".join(rest))
         finally:
             await order.put(None)
 

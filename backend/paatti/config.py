@@ -20,6 +20,17 @@ def _list(name: str, default: str) -> list[str]:
     return [x.strip() for x in os.getenv(name, default).split(",") if x.strip()]
 
 
+# Voices bulbul:v2 had that bulbul:v3 rejects (HTTP 400). An old value left in the hosting
+# dashboard would break every default-voice request, so it falls back to a v3 voice.
+_V2_ONLY_SPEAKERS = {"anushka", "manisha", "vidya", "arya", "abhilash", "karun", "hitesh"}
+
+
+def _tts_speaker() -> str:
+    speaker = (os.getenv("SARVAM_TTS_SPEAKER") or "kavitha").strip().lower()
+    model = os.getenv("SARVAM_TTS_MODEL", "bulbul:v3")
+    return "kavitha" if model.endswith("v3") and speaker in _V2_ONLY_SPEAKERS else speaker
+
+
 @dataclass(frozen=True)
 class Settings:
     anthropic_api_key: str | None = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY") or None)
@@ -67,7 +78,7 @@ class Settings:
     stt_model: str = field(default_factory=lambda: os.getenv("SARVAM_STT_MODEL", "saaras:v3"))
     stt_mode: str = field(default_factory=lambda: os.getenv("SARVAM_STT_MODE", "translit"))
     tts_model: str = field(default_factory=lambda: os.getenv("SARVAM_TTS_MODEL", "bulbul:v3"))
-    tts_speaker: str = field(default_factory=lambda: os.getenv("SARVAM_TTS_SPEAKER", "kavitha"))
+    tts_speaker: str = field(default_factory=lambda: _tts_speaker())
     # Optional: ask Sarvam for a specific output rate (e.g. 8000 for phone). Unset = provider default.
     tts_sample_rate: int | None = field(
         default_factory=lambda: int(v) if (v := os.getenv("SARVAM_TTS_SAMPLE_RATE", "")) else None
@@ -93,6 +104,9 @@ class Settings:
     max_turn_chars: int = 2000
     max_turns_per_call: int = field(default_factory=lambda: int(os.getenv("PAATTI_MAX_TURNS", "300")))
     sarvam_daily_cap: int = field(default_factory=lambda: int(os.getenv("SARVAM_DAILY_CAP", "2000")))
+    # Our own ceiling on Sarvam requests per minute, kept under the account's rate limit so requests
+    # wait a moment instead of failing with 429. Live calls may use all of it; warm-up only half.
+    sarvam_rpm: int = field(default_factory=lambda: max(2, int(os.getenv("PAATTI_SARVAM_RPM", "20"))))
     anthropic_daily_cap: int = field(default_factory=lambda: int(os.getenv("PAATTI_ANTHROPIC_DAILY_CAP", "400")))
     reply_cache_max: int = field(default_factory=lambda: int(os.getenv("PAATTI_REPLY_CACHE_MAX", "2000")))
     max_audio_bytes: int = 5 * 1024 * 1024
