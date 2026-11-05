@@ -55,7 +55,9 @@ class SarvamClient:
 
     def status(self) -> dict:
         self._prune(time.monotonic())
-        return {"calls_today": self.calls_today, "daily_cap": self.settings.sarvam_daily_cap,
+        key = self.settings.sarvam_api_key or ""
+        return {"key_ends_with": key[-4:] if len(key) > 12 else "?",  # which key is live (not secret)
+                "calls_today": self.calls_today, "daily_cap": self.settings.sarvam_daily_cap,
                 "last_minute": len(self._hits), "per_minute_cap": self.settings.sarvam_rpm,
                 "last_error": self.last_error}
 

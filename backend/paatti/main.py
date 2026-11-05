@@ -35,6 +35,7 @@ from .voice import FILLER_AFTER_S, VoiceCall
 
 log = logging.getLogger("paatti")
 
+STARTED_AT = time.time()
 PHONE_RATE = 16000  # browser phone streams 16 kHz PCM16
 PHONE_RECONNECT_GRACE_S = 30.0  # a dropped phone may rejoin its call within this window
 
@@ -106,6 +107,7 @@ def create_app(
     def health() -> dict:
         return {
             "status": "ok",
+            "server_started": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(STARTED_AT)),
             "persona": persona.mode,
             "extractor": f"{extractor.backend.name}+rules" if extractor.enabled else "rules",
             "voice": "sarvam" if sarvam else "browser",
