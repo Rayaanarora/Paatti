@@ -481,8 +481,7 @@ def create_app(
                     if item is None:
                         break
                     heard.append(item)
-                reply({"type": "speak_text", "text": " ".join(heard), "lang": profile.language_code,
-                       "reason": str(err)[:200]})
+                reply({"type": "notice", "message": f"Sarvam voice failed: {str(err)[:200]}"})
         except (SarvamError, ValueError) as e:
             reply({"type": "notice", "message": f"voice output unavailable: {e}"})
         finally:
@@ -560,7 +559,7 @@ def create_app(
 
             call = VoiceCall(service, s, sarvam, in_rate=PHONE_RATE, out_rate=PHONE_RATE,
                              send_audio=send_audio, clear_audio=clear_audio, barge_in=False, echo_guard=True,
-                             send_text=send_text, on_stt_unavailable=stt_unavailable)
+                             on_stt_unavailable=stt_unavailable)  # no robotic device-voice fallback
             call.start()
         profile = PROFILES[s.persona_key]
         await send({"type": "connected", "voice": bool(sarvam), "persona": s.persona_key, "name": profile.name,

@@ -146,7 +146,9 @@ async def test_synthesized_audio_has_long_pauses_removed():
     tone = struct.pack(f"<{rate // 2}h", *(int(8000 * math.sin(2 * math.pi * 300 * i / rate)) for i in range(rate // 2)))
     gap = b"\x00\x00" * rate  # 1 s pause
     slow = wav_from_pcm(tone + gap + tone, rate)
-    c = make_client(lambda r: httpx.Response(200, json={"audios": [base64.b64encode(slow).decode()]}), raw=False)
+    settings = Settings(sarvam_api_key="test-key", phone_line=False, tts_speedup=1.15)  # speed-up is opt-in
+    c = SarvamClient(settings, http=httpx.AsyncClient(base_url="https://sarvam.test", transport=httpx.MockTransport(
+        lambda r: httpx.Response(200, json={"audios": [base64.b64encode(slow).decode()]}))))
     pcm, out_rate = pcm_from_wav(await c.synthesize("Aiyo kanna, oru nimisham"))
     # 2.0 s (with a 1 s pause) -> pause cut to 0.12 s, then 1.15x time-stretch -> ~0.97 s
     assert out_rate == rate and 0.8 < len(pcm) / 2 / rate < 1.1
@@ -162,7 +164,7 @@ async def test_synthesize_puts_voice_on_a_phone_line():
     rate = 22050
     tone = struct.pack(f"<{rate}h", *(int(9000 * math.sin(2 * math.pi * 220 * i / rate)) for i in range(rate)))
     wav = wav_from_pcm(tone, rate)
-    settings = Settings(sarvam_api_key="k", tts_speedup=1.0, tts_max_gap_ms=0, audio_cache_dir=None)
+    settings = Settings(sarvam_api_key="k", tts_speedup=1.0, tts_max_gap_ms=0, audio_cache_dir=None, phone_line=True)
     http = httpx.AsyncClient(base_url="https://sarvam.test", transport=httpx.MockTransport(
         lambda r: httpx.Response(200, json={"audios": [base64.b64encode(wav).decode()]})))
     pcm, out_rate = pcm_from_wav(await SarvamClient(settings, http=http).synthesize("Hello kanna"))

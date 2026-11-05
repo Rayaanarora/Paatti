@@ -95,11 +95,11 @@ class Settings:
     )
     # Longest pause kept inside a synthesised clip (ms). Shorter = snappier speech; 0 = off.
     # Pitch-preserving speed-up applied after synthesis (1.0 = off). 1.1-1.25 sounds natural.
-    tts_speedup: float = field(default_factory=lambda: min(1.6, max(1.0, _env_num("PAATTI_TTS_SPEEDUP", "1.15", float))))
+    tts_speedup: float = field(default_factory=lambda: min(1.6, max(1.0, _env_num("PAATTI_TTS_SPEEDUP", "1.0", float))))
     tts_max_gap_ms: int = field(default_factory=lambda: _env_num("PAATTI_TTS_MAX_GAP_MS", "120", int))
     # Make her sound like she is on a real phone call: 8 kHz narrowband, phone AGC, G.711 grain and a
     # quiet room tone under her voice. Off (0) gives the clean studio voice.
-    phone_line: bool = field(default_factory=lambda: os.getenv("PAATTI_PHONE_LINE", "1") != "0")
+    phone_line: bool = field(default_factory=lambda: os.getenv("PAATTI_PHONE_LINE", "0") == "1")
     line_noise_db: float = field(default_factory=lambda: max(-90.0, min(-30.0, _env_num("PAATTI_LINE_NOISE_DB", "-52", float))))
     audio_cache_dir: str | None = field(default_factory=lambda: os.getenv(
         "PAATTI_AUDIO_CACHE_DIR", str(Path(__file__).parent / "data" / "audio_cache")) or None)

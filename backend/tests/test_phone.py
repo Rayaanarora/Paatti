@@ -592,10 +592,10 @@ def test_dashboard_typed_line_is_spoken_in_sarvam_voice_mode():
             assert _until(ws, {"paatti_audio"})["format"] == "wav"
 
 
-def test_dashboard_falls_back_to_browser_voice_when_sarvam_refuses():
+def test_dashboard_reports_sarvam_failure_instead_of_a_robot_voice():
     with TestClient(_dashboard(FakeSarvam(fail_tts=True))) as c:
         sid = c.post("/api/sessions", json={"persona": "paatti"}).json()["session_id"]
         with c.websocket_connect(f"/ws/sessions/{sid}") as ws:
             ws.send_json({"type": "scammer_text", "text": "This is CBI calling", "speak": True})
-            m = _until(ws, {"speak_text", "paatti_audio"})
-            assert m["type"] == "speak_text" and m["text"] and m["lang"] == "ta-IN"
+            m = _until(ws, {"notice", "paatti_audio"})
+            assert m["type"] == "notice" and "Sarvam voice failed" in m["message"]  # no robot voice
