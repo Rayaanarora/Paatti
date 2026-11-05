@@ -23,6 +23,8 @@ Deck: `docs/Paatti_BeyondHack2_soft.pptx`. About 1–1.5 minutes per slide, so 1
 | **744 / 744** | Jailbreak attacks (62 × 12 personas) where she stayed in character | `evals/redteam.py` |
 | **0.37 s / 1.4 s / 2–5 s** | Speech-to-text / 8 s of voice synthesised / Gemini reply | Measured with live keys on 5 Nov |
 | **2 hours** | Golden-hour timer on the report | Starts at the first captured identifier |
+| **$1–1.7 B → $8.9 B** | India fraud-prevention market today → 2034 (~20% a year) | IMARC, MarketsandMarkets |
+| **₹25,698 crore** | Already blocked by flagging mule accounts | Suspect Registry, PIB (June 2026) |
 
 ---
 
@@ -64,7 +66,9 @@ Three, **evidence ready to act on**: a Mule Intel Report with the exact quotes, 
 **Offer a live demo here** (see section 4).
 
 ### Slide 8 · Potential applications
-**Say (45 s):** "One engine, many users. Bank fraud desks freeze or watch mule accounts before money moves. Cyber cells and 1930 get leads already in NCRP format. Telcos can send flagged scam calls to Paatti instead of just blocking them. UPI apps can block scammer UPI IDs across apps. Families can forward a suspicious call to her number. And real scam transcripts become training material for police and bank staff."
+**Say the money first (20 s):** "There's real money here. India's fraud-prevention market is about one to 1.7 billion dollars today and is expected to reach about 8.9 billion dollars by 2034, growing around 20% a year. And mule-account intelligence already pays: the government's Suspect Registry has blocked ₹25,698 crore just by flagging mule accounts. Paatti produces that intelligence *before* a victim pays."
+**Sources if asked:** IMARC Group, $1.69 B in 2025 → $8.86 B by 2034 (20.2% a year); MarketsandMarkets, about $0.99 B for 2026 (22.4% a year); Suspect Registry figure from PIB, June 2026. The two research firms measure differently, which is why the slide says "$1–1.7 B".
+**Then (45 s):** "One engine, many users. Bank fraud desks freeze or watch mule accounts before money moves. Cyber cells and 1930 get leads already in NCRP format. Telcos can send flagged scam calls to Paatti instead of just blocking them. UPI apps can block scammer UPI IDs across apps. Families can forward a suspicious call to her number. And real scam transcripts become training material for police and bank staff."
 
 ### Slide 9 · Future scope
 **Say (45 s):** "Next three months: real phone lines, 'hand it to Paatti' call forwarding, operator login. Six months: plug into the system, with a bank fraud-desk API cross-checked against RBI's MuleHunter, a real NCRP / 1930 hand-off, and a mule network graph across calls. Twelve months: national scale, with telco-run honeypot numbers seeded onto scam lists, more languages, and a multi-agency cloud deployment."
@@ -117,6 +121,7 @@ Three, **evidence ready to act on**: a Mule Intel Report with the exact quotes, 
   - O2's Daisy (UK) wastes scammers' time but collects no evidence.
   - Paatti is the only one that gets the account **before** a victim pays, with evidence.
 - **Why would a bank trust it?** The evidence is verbatim and hashed, confirmed by the scammer, and repeat sightings link calls; it complements their own transaction monitoring.
+- **How big is the market?** "$1–1.7 billion in India today, about $8.9 billion by 2034 at ~20% a year (IMARC, MarketsandMarkets). And flagging mule accounts has already blocked ₹25,698 crore (Suspect Registry). We sell that same intelligence, earlier." Don't claim a revenue figure for Paatti; we haven't modelled one.
 - **What does it cost to run?** Per call it uses a few speech-to-text and voice requests (Sarvam) and a few Gemini calls; rehearsed and prepared replies cost nothing. There are daily caps on both so costs can't run away. (Don't quote a rupee figure; we haven't measured one.)
 
 ### "What's not done?" (say these confidently; honesty scores points)
