@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { Dispatch, LiveCalls, PhoneDemo } from './components/Ops.jsx'
 import { IntelCards, StageTracker, TimeWasted, Transcript } from './components/Panels.jsx'
+import { CHANNEL_LABEL } from './state.js'
 import { useCall } from './useCall.js'
 
 // One-click lines for rehearsing the demo without a second person.
@@ -17,6 +19,7 @@ export default function App() {
   const { state, health } = call
   const [draft, setDraft] = useState('')
   const active = Boolean(state.sessionId) && !state.ended
+  const drivable = active && state.channel === 'web'
   const serverVoice = health?.voice === 'sarvam'
 
   const submit = (e) => {
@@ -52,9 +55,12 @@ export default function App() {
           <section className="panel controls" aria-label="Call controls">
             <div className="row">
               {!active ? (
-                <button className="btn primary" onClick={call.start}>{state.ended ? 'New call' : 'Start call'}</button>
+                <button className="btn primary" onClick={() => call.start()}>{state.ended ? 'New call' : 'Start call'}</button>
               ) : (
                 <button className="btn danger" onClick={call.end}>End call</button>
+              )}
+              {active && state.channel !== 'web' && (
+                <span className="pill">{CHANNEL_LABEL[state.channel]}{state.callerId ? ` · ${state.callerId}` : ''} · live</span>
               )}
               <div className="segmented" role="radiogroup" aria-label="Input mode">
                 {[
@@ -77,13 +83,13 @@ export default function App() {
               )}
             </div>
 
-            {call.voiceMode === 'browser' && active && (
+            {call.voiceMode === 'browser' && drivable && (
               <button
                 className={`btn mic ${call.listening ? 'live' : ''}`}
                 onClick={call.listening ? call.stopListening : call.startListening}
               >{call.listening ? 'Listening… tap to stop' : 'Start microphone'}</button>
             )}
-            {call.voiceMode === 'server' && active && (
+            {call.voiceMode === 'server' && drivable && (
               <button
                 className={`btn mic ${call.listening ? 'live' : ''}`}
                 onPointerDown={call.pttStart}
@@ -103,7 +109,7 @@ export default function App() {
               />
               <button className="btn" disabled={!active || !draft.trim()}>Send</button>
             </form>
-            {active && (
+            {drivable && (
               <details className="demo">
                 <summary>Demo script lines</summary>
                 <div className="demo-lines">
@@ -114,6 +120,8 @@ export default function App() {
               </details>
             )}
           </section>
+          <LiveCalls currentId={state.sessionId} onOpen={call.attach} />
+          <PhoneDemo health={health} onCreate={call.create} />
         </div>
 
         <div className="col-right">
@@ -123,6 +131,7 @@ export default function App() {
           <section className="panel report" aria-label="Mule Intel Report">
             <header className="panel-head"><h2>Mule Intel Report</h2></header>
             <p className="muted">Identifiers, verbatim evidence quotes, stage timeline, BNS 318–319, SHA-256 hash. Unconfirmed digits stay out of the NCRP fields.</p>
+            <Dispatch state={state} onDispatched={(m) => call.dispatch({ type: 'notice', id: Date.now(), message: m })} />
             <div className="row">
               <a className={`btn primary ${state.sessionId ? '' : 'disabled'}`} href={state.sessionId ? `/api/sessions/${state.sessionId}/report.pdf` : undefined} aria-disabled={!state.sessionId}>Download PDF</a>
               <a className={`btn ${state.sessionId ? '' : 'disabled'}`} href={state.sessionId ? `/api/sessions/${state.sessionId}/report.json` : undefined} aria-disabled={!state.sessionId}>JSON</a>

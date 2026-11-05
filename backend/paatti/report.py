@@ -21,7 +21,15 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from .schema import IntelField
 from .session import CallSession
 
-REPORT_VERSION = "1.0"
+REPORT_VERSION = "2.0"
+GOLDEN_HOUR_S = 2 * 60 * 60  # recovery is 70-80% if 1930 is reached within 2 hours
+
+LEAD_STATUS = "LEAD - requires analyst review before any account action"
+FRAMING_NOTE = (
+    "Identifiers were stated by the caller, who controls what is said. A scammer could read out an innocent "
+    "person's account to get it frozen. Treat each identifier as a lead: corroborate with bank-side transaction "
+    "signals (for example MuleHunter.ai) and repeat sightings before acting. Paatti never freezes anything itself."
+)
 
 LEGAL_SECTIONS = [
     {
@@ -80,6 +88,17 @@ def _identifier(kind: str, f: IntelField) -> dict:
     }
 
 
+def _corroboration(kind: str, f: IntelField, session: CallSession) -> dict:
+    signals = {
+        "readback_confirmed": f.confirmed,
+        "rules_and_llm_agree": f.source == "rules+llm",
+        "seen_in_other_calls": len(f.repeat_sessions),
+    }
+    score = sum([signals["readback_confirmed"], signals["rules_and_llm_agree"], signals["seen_in_other_calls"] > 0])
+    return {"type": kind, "value": f.value, **signals,
+            "strength": ["weak", "moderate", "strong", "strong"][score]}
+
+
 def build_report(session: CallSession) -> dict:
     intel = session.intel
     transcript = [t.model_dump(mode="json") for t in session.turns]
@@ -106,7 +125,12 @@ def build_report(session: CallSession) -> dict:
         "report_version": REPORT_VERSION,
         "generated_at": datetime.now(tz=timezone.utc).isoformat(timespec="seconds"),
         "session_id": session.id,
+        "status": LEAD_STATUS,
         "call": {
+            "channel": session.channel,
+            "persona": session.persona_key,
+            "caller_id": session.caller_id,
+            "caller_id_note": "Network caller ID; may be spoofed." if session.caller_id else None,
             "started_at": _iso(session.started_at),
             "time_wasted_seconds": session.time_wasted(),
             "turns": len(session.turns),
@@ -118,6 +142,20 @@ def build_report(session: CallSession) -> dict:
         "stage_timeline": [e.model_dump(mode="json") for e in session.stage_history],
         "identifiers": identifiers,
         "unconfirmed_identifiers": unconfirmed,
+        "corroboration": [
+            _corroboration(kind, f, session)
+            for kind in ("account_number", "ifsc", "upi_id")
+            if (f := getattr(intel, kind))
+        ],
+        "safeguards": {
+            "framing_risk": FRAMING_NOTE,
+            "auto_action": "none - human review required",
+        },
+        "golden_hour": {
+            "window_seconds": GOLDEN_HOUR_S,
+            "first_capture_t_seconds": session.first_capture_t(),
+        },
+        "dispatches": session.dispatches,
         "legal_sections": LEGAL_SECTIONS,
         "chain_of_custody": {
             "hash_algorithm": "SHA-256",
@@ -178,12 +216,20 @@ def render_pdf(report: dict) -> bytes:
 
     agency = report["claimed_agency"]["value"] if report["claimed_agency"] else "-"
     amount = _fmt_inr(report["amount_demanded"]["value"]) if report["amount_demanded"] else "-"
+    banner = Table([[Paragraph(f"<b>{escape(report['status'])}</b>", body)]], colWidths=[178 * mm])
+    banner.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fff3d1")),
+                                ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#9a6b00")),
+                                ("LEFTPADDING", (0, 0), (-1, -1), 6)]))
     story = [
         Paragraph("Mule Intel Report", h1),
         p(f"Session {report['session_id']} | generated {report['generated_at']} | report v{report['report_version']}", small),
+        Spacer(1, 4),
+        banner,
         Spacer(1, 6),
         table(
             [
+                [p("Caller ID"), p(report["call"].get("caller_id") or "-"), p("Channel / persona"),
+                 p(f"{report['call'].get('channel')} / {report['call'].get('persona')}")],
                 [p("Claimed agency"), p(agency), p("Amount demanded"), p(amount)],
                 [p("Furthest stage"), p((report["scam_stage"] or "-").title()), p("Time wasted"),
                  p(f"{int(report['call']['time_wasted_seconds'] // 60)} min {int(report['call']['time_wasted_seconds'] % 60)} s")],
@@ -207,6 +253,15 @@ def render_pdf(report: dict) -> bytes:
     story.append(table(rows, [30 * mm, 52 * mm, 24 * mm, 30 * mm, 42 * mm]))
     if report["unconfirmed_identifiers"]:
         story.append(p("Unconfirmed identifiers are excluded from the NCRP-ready fields.", small))
+
+    if report.get("corroboration"):
+        story.append(Paragraph("Corroboration", h2))
+        rows = [[p("Identifier"), p("Read-back"), p("Rules + LLM agree"), p("Other calls"), p("Strength")]]
+        for c in report["corroboration"]:
+            rows.append([p(f"{LABELS.get(c['type'], c['type'])}: {c['value']}", mono), p("yes" if c["readback_confirmed"] else "no"),
+                         p("yes" if c["rules_and_llm_agree"] else "no"), p(c["seen_in_other_calls"]), p(c["strength"])])
+        story.append(table(rows, [62 * mm, 24 * mm, 32 * mm, 26 * mm, 34 * mm]))
+    story.append(p(report["safeguards"]["framing_risk"], small))
 
     story.append(Paragraph("Evidence quotes", h2))
     ev = [[p("t (s)"), p("Field"), p("Verbatim quote")]]
@@ -251,6 +306,15 @@ def render_pdf(report: dict) -> bytes:
         [[p(k.replace("_", " ")), p(", ".join(map(str, v)) if isinstance(v, list) else v, mono)] for k, v in nc.items()],
         [50 * mm, 128 * mm], header=False,
     ))
+
+    if report.get("dispatches"):
+        story.append(Paragraph("Dispatch log (mock hand-off)", h2))
+        rows = [[p("Destination"), p("Reference"), p("Since first capture"), p("Golden hour")]]
+        for d in report["dispatches"]:
+            secs = d.get("seconds_since_first_capture")
+            rows.append([p(d["label"]), p(d["reference"], mono), p(f"{secs:.0f} s" if secs is not None else "-"),
+                         p("within" if d["within_golden_hour"] else "outside")])
+        story.append(table(rows, [52 * mm, 40 * mm, 46 * mm, 40 * mm]))
 
     story.append(Paragraph("Transcript", h2))
     for t in report["transcript"]:

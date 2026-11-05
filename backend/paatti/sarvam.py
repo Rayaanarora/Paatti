@@ -46,19 +46,18 @@ class SarvamClient:
             raise SarvamError(f"speech-to-text failed ({resp.status_code})")
         return str(resp.json().get("transcript", "")).strip()
 
-    async def synthesize(self, text: str) -> bytes:
-        """Text-to-speech in a slow, elderly Tamil voice. Returns WAV bytes."""
-        resp = await self.http.post(
-            "/text-to-speech",
-            headers=self._headers,
-            json={
-                "text": text[:1500],
-                "target_language_code": "ta-IN",
-                "model": self.settings.tts_model,
-                "speaker": self.settings.tts_speaker,
-                "pace": self.settings.tts_pace,
-            },
-        )
+    async def synthesize(self, text: str, language_code: str = "ta-IN", speaker: str | None = None) -> bytes:
+        """Text-to-speech in a slow, elderly voice. Returns WAV bytes."""
+        body = {
+            "text": text[:1500],
+            "target_language_code": language_code,
+            "model": self.settings.tts_model,
+            "speaker": speaker or self.settings.tts_speaker,
+            "pace": self.settings.tts_pace,
+        }
+        if self.settings.tts_sample_rate:
+            body["speech_sample_rate"] = self.settings.tts_sample_rate
+        resp = await self.http.post("/text-to-speech", headers=self._headers, json=body)
         if resp.status_code != 200:
             log.warning("Sarvam TTS HTTP %s", resp.status_code)
             raise SarvamError(f"text-to-speech failed ({resp.status_code})")

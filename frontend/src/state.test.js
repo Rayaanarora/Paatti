@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cardStatus, formatClock, formatInr, groupDigits, initialState, liveSeconds, reducer, INTEL_CARDS } from './state.js'
+import { cardStatus, formatClock, formatHms, formatInr, goldenHourLeft, groupDigits, initialState, liveSeconds, reducer, INTEL_CARDS } from './state.js'
 
 const snap = (over = {}) => ({
   session_id: 'abc',
@@ -69,5 +69,15 @@ describe('card status', () => {
     expect(cardStatus(account, { confirmed: false })).toBe('captured')
     expect(cardStatus(account, { confirmed: true })).toBe('locked')
     expect(cardStatus(agency, { confirmed: false })).toBe('locked')
+  })
+})
+
+describe('golden hour', () => {
+  it('counts down two hours from the first capture', () => {
+    const s = reducer(initialState, { type: 'session', state: snap({ started_at: 1000, first_capture_t: 60, caller_id: '+91', channel: 'phone' }), now: 0 })
+    expect(s.channel).toBe('phone')
+    expect(goldenHourLeft(s, (1000 + 60 + 600) * 1000)).toBe(7200 - 600)
+    expect(goldenHourLeft(initialState)).toBeNull()
+    expect(formatHms(7199)).toBe('1:59:59')
   })
 })

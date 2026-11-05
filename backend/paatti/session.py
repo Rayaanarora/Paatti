@@ -9,6 +9,7 @@ import time
 import uuid
 from typing import Callable
 
+from .personas import get_profile
 from .rule_extractor import extract_from_turn
 from .schema import (
     LIST_FIELDS,
@@ -67,8 +68,20 @@ class RepeatRegistry:
 
 
 class CallSession:
-    def __init__(self, registry: RepeatRegistry, clock: Callable[[], float] = time.time):
+    def __init__(
+        self,
+        registry: RepeatRegistry,
+        clock: Callable[[], float] = time.time,
+        *,
+        persona_key: str = "paatti",
+        channel: str = "web",
+        caller_id: str | None = None,
+    ):
         self.id = uuid.uuid4().hex[:12]
+        self.persona_key = persona_key
+        self.channel = channel  # web (dashboard) | phone (Twilio) | web-phone (browser on a mobile)
+        self.caller_id = caller_id  # network caller ID; may be spoofed
+        self.dispatches: list[dict] = []
         self._clock = clock
         self.started_at = clock()
         self.ended_at: float | None = None
@@ -140,14 +153,8 @@ class CallSession:
                 return field, f.value
         return None
 
-    @staticmethod
-    def readback_line(field: str, value: str) -> str:
-        if field == "account_number":
-            spaced = "-".join(value)
-            return f"Aiyo, konjam porunga kanna... pen edutten. Account number: {spaced}. Sariya? Correct-aa?"
-        if field == "upi_id":
-            return f"Kanna, UPI-nu sonneenga... {value}. Idhu thaana? Correct-aa?"
-        return f"IFSC code... {' '.join(value)}. Sariya kanna?"
+    def readback_line(self, field: str, value: str) -> str:
+        return get_profile(self.persona_key).readback_line(field, value)
 
     def _resolve_readbacks(self, text: str, findings: list[Finding]) -> None:
         for field, offered in list(self._readback_offered.items()):
@@ -234,6 +241,9 @@ class CallSession:
     def snapshot(self) -> dict:
         return {
             "session_id": self.id,
+            "persona": self.persona_key,
+            "channel": self.channel,
+            "caller_id": self.caller_id,
             "started_at": self.started_at,
             "time_wasted": self.time_wasted(),
             "ended": self.ended_at is not None,
@@ -242,7 +252,14 @@ class CallSession:
             "intel": self.intel.model_dump(mode="json"),
             "pending_readback": self.pending_readback(),
             "turn_count": len(self.turns),
+            "first_capture_t": self.first_capture_t(),
+            "dispatches": self.dispatches,
         }
+
+    def first_capture_t(self) -> float | None:
+        """Call-relative time the first mule identifier was captured (starts the golden hour)."""
+        ts = [f.t for f in (self.intel.account_number, self.intel.upi_id, self.intel.ifsc) if f]
+        return min(ts) if ts else None
 
 
 def _read_back(field: str, value: str, text: str) -> bool:

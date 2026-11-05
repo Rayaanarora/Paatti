@@ -82,35 +82,54 @@ export function useCall() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const start = useCallback(async () => {
+  const connect = useCallback((snap) => {
     ws.current?.close()
-    dispatch({ type: 'reset' })
-    let snap
-    try {
-      const r = await fetch('/api/sessions', { method: 'POST' })
-      if (!r.ok) throw new Error(r.status === 429 ? 'Too many calls started; wait a minute.' : `HTTP ${r.status}`)
-      snap = await r.json()
-    } catch (e) {
-      notice(`Could not start call: ${e.message}`, 'error')
-      return
-    }
     dispatch({ type: 'session', state: snap })
     const sock = new WebSocket(wsUrl(snap.session_id))
     ws.current = sock
     sock.onopen = () => dispatch({ type: 'connected', value: true })
-    sock.onclose = () => dispatch({ type: 'connected', value: false })
+    sock.onclose = () => { if (ws.current === sock) dispatch({ type: 'connected', value: false }) }
     sock.onerror = () => notice('Live connection failed. Is the backend running with uvicorn[standard]?', 'error')
     sock.onmessage = (ev) => {
       const msg = JSON.parse(ev.data)
       if (msg.type === 'turn') {
         dispatch({ type: 'turn', turn: msg.turn })
-        if (msg.turn.role === 'paatti' && live.current.voiceMode === 'browser') speak(msg.turn.text)
+        if (msg.turn.role === 'paatti' && live.current.voiceMode === 'browser' && snap.channel === 'web') speak(msg.turn.text)
       } else if (msg.type === 'state') dispatch({ type: 'state', state: msg.state })
-      else if (msg.type === 'paatti_audio') playWav(msg.data)
+      else if (msg.type === 'paatti_audio' && live.current.voiceMode === 'server') playWav(msg.data)
       else if (msg.type === 'notice') notice(msg.message, 'warn')
       else if (msg.type === 'error') notice(msg.message, 'error')
     }
   }, [notice, speak, playWav])
+
+  /** Create a new call. channel 'web' = dashboard-driven, 'web-phone' = a mobile joins via QR. */
+  const create = useCallback(async ({ channel = 'web', persona } = {}) => {
+    try {
+      const r = await fetch('/api/sessions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel, persona }),
+      })
+      if (!r.ok) throw new Error(r.status === 429 ? 'Too many calls started; wait a minute.' : `HTTP ${r.status}`)
+      const snap = await r.json()
+      connect(snap)
+      return snap
+    } catch (e) {
+      notice(`Could not start call: ${e.message}`, 'error')
+      return null
+    }
+  }, [connect, notice])
+
+  const start = useCallback((persona) => create({ channel: 'web', persona }), [create])
+
+  /** Watch an existing call (e.g. a phone call) on this screen. */
+  const attach = useCallback(async (sessionId) => {
+    try {
+      const r = await fetch(`/api/sessions/${sessionId}`)
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      connect(await r.json())
+    } catch (e) {
+      notice(`Could not open call: ${e.message}`, 'error')
+    }
+  }, [connect, notice])
 
   const sayAsScammer = useCallback((text) => {
     const t = text.trim()
@@ -218,7 +237,7 @@ export function useCall() {
 
   return {
     state, dispatch, health, listening, speaking, voiceMode, setVoiceMode, muted, setMuted,
-    start, end, sayAsScammer, startListening, stopListening, pttStart, pttStop,
+    start, create, attach, end, sayAsScammer, startListening, stopListening, pttStart, pttStop,
     speechSupported: Boolean(SpeechRecognition),
   }
 }

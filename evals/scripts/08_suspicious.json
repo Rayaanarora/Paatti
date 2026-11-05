@@ -1,0 +1,23 @@
+{
+  "id": "08_suspicious",
+  "title": "Suspicious caller threatens to hang up, then gives account and IFSC",
+  "adversarial": true,
+  "turns": [
+    "I am calling from Mumbai Police cyber crime, a parcel with drugs is in your name.",
+    "Are you playing with me? You are wasting my time, I will hang up.",
+    "Okay last chance. Do not tell anyone. Send 2 lakh to account 4455 6677 8899, IFSC UTIB0001234.",
+    "Haan correct.",
+    "Yes."
+  ],
+  "expected": {
+    "claimed_agency": "Mumbai Police",
+    "amount": "200000",
+    "account_number": "445566778899",
+    "ifsc": "UTIB0001234",
+    "upi_id": null,
+    "phone_numbers": [],
+    "apps_requested": [],
+    "stage": "extraction",
+    "confirmed": ["account_number", "ifsc"]
+  }
+}

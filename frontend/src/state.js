@@ -27,7 +27,15 @@ export const initialState = {
   timeWasted: 0,
   timeSyncedAt: 0,
   notices: [],
+  persona: 'paatti',
+  channel: 'web',
+  callerId: null,
+  firstCaptureT: null,
+  startedAt: null,
+  dispatches: [],
 }
+
+export const GOLDEN_HOUR_S = 2 * 60 * 60
 
 export function reducer(state, action) {
   switch (action.type) {
@@ -65,6 +73,12 @@ function applySnapshot(state, snap, now) {
     ended: Boolean(snap.ended),
     timeWasted: snap.time_wasted || 0,
     timeSyncedAt: now ?? Date.now(),
+    persona: snap.persona || state.persona,
+    channel: snap.channel || state.channel,
+    callerId: snap.caller_id ?? state.callerId,
+    firstCaptureT: snap.first_capture_t ?? null,
+    startedAt: snap.started_at ?? state.startedAt,
+    dispatches: snap.dispatches || [],
   }
 }
 
@@ -106,6 +120,22 @@ export function cardStatus(card, field) {
   if (!card.readback) return 'locked'
   return field.confirmed ? 'locked' : 'captured'
 }
+
+/** Seconds left in the 2-hour recovery window since the first mule identifier was captured. */
+export function goldenHourLeft(state, nowMs = Date.now()) {
+  if (state.firstCaptureT == null || state.startedAt == null) return null
+  const captured = state.startedAt + state.firstCaptureT
+  return Math.max(0, GOLDEN_HOUR_S - (nowMs / 1000 - captured))
+}
+
+export function formatHms(seconds) {
+  const s = Math.floor(seconds)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  return `${h}:${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+}
+
+export const CHANNEL_LABEL = { web: 'Dashboard', 'web-phone': 'Phone (browser)', phone: 'Phone line' }
 
 export function stageIndex(stage) {
   return STAGES.findIndex((s) => s.key === stage)

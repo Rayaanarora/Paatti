@@ -22,9 +22,11 @@ def new_session(client):
 
 
 def test_health_reports_offline_modes(client):
-    assert client.get("/api/health").json() == {
-        "status": "ok", "persona": "scripted", "extractor": "rules", "voice": "browser",
+    h = client.get("/api/health").json()
+    assert {k: h[k] for k in ("status", "persona", "extractor", "voice", "telephony")} == {
+        "status": "ok", "persona": "scripted", "extractor": "rules", "voice": "browser", "telephony": False,
     }
+    assert {p["key"] for p in h["personas"]} == {"paatti", "dadi"}
 
 
 def test_text_turn_flow_and_readback(client):
@@ -112,3 +114,43 @@ def test_session_rate_limit(monkeypatch):
     assert c.post("/api/sessions").status_code == 201
     assert c.post("/api/sessions").status_code == 201
     assert c.post("/api/sessions").status_code == 429
+
+
+def test_dispatch_history_and_report_safeguards(client):
+    sid = new_session(client)
+    for text in ["This is CBI. Pay Rs 50,000 to account 3456 7890 1234", "yes correct"]:
+        client.post(f"/api/sessions/{sid}/turn", json={"text": text})
+    assert client.post(f"/api/sessions/{sid}/dispatch", json={"destination": "nowhere"}).status_code == 422
+    d = client.post(f"/api/sessions/{sid}/dispatch", json={"destination": "ncrp_1930"}).json()
+    assert d["reference"].startswith("NCRP-") and d["within_golden_hour"] and d["mock"]
+    assert d["identifiers_sent"]["suspect_bank_account"] == "345678901234"
+    rep = client.get(f"/api/sessions/{sid}/report.json").json()
+    assert rep["status"].startswith("LEAD")
+    assert "innocent" in rep["safeguards"]["framing_risk"]
+    assert rep["corroboration"][0]["readback_confirmed"] is True
+    assert rep["dispatches"][0]["reference"] == d["reference"]
+    assert client.get(f"/api/sessions/{sid}/report.pdf").content.startswith(b"%PDF")
+    hist = client.get("/api/history").json()
+    assert hist["counts"]["dispatches"] == 1 and hist["mule_registry"][0]["value"] == "345678901234"
+    listed = client.get("/api/sessions").json()
+    assert listed[0]["session_id"] == sid and "intel" not in listed[0]
+
+
+def test_second_screen_watches_live_call(client):
+    sid = new_session(client)
+    client.post(f"/api/sessions/{sid}/turn", json={"text": "This is CBI"})
+    with client.websocket_connect(f"/ws/sessions/{sid}") as watcher, \
+            client.websocket_connect(f"/ws/sessions/{sid}") as driver:
+        first = [watcher.receive_json() for _ in range(3)]  # state + 2 history turns
+        assert first[0]["type"] == "state" and [m["type"] for m in first[1:]] == ["turn", "turn"]
+        [driver.receive_json() for _ in range(3)]
+        driver.send_json({"type": "scammer_text", "text": "Arrest warrant issued"})
+        got = [watcher.receive_json() for _ in range(3)]
+        assert [m["type"] for m in got] == ["turn", "state", "turn"]
+        assert got[1]["state"]["stage"] == "fear"
+
+
+def test_create_session_with_persona(client):
+    r = client.post("/api/sessions", json={"channel": "web-phone", "persona": "dadi"})
+    assert r.json()["persona"] == "dadi" and r.json()["channel"] == "web-phone"
+    assert client.post("/api/sessions", json={"channel": "phone"}).status_code == 422

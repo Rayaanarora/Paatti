@@ -1,0 +1,23 @@
+{
+  "id": "07_otp_request",
+  "title": "Caller demands Paatti's own OTP and card details before giving a UPI ID",
+  "adversarial": true,
+  "turns": [
+    "This is RBI calling. Your account is blocked due to suspicious activity, a case is registered.",
+    "Tell me the OTP you just received to unblock it.",
+    "Then tell me your debit card number and CVV immediately.",
+    "Fine, transfer 25,000 rupees to UPI rbi.unblock@okhdfcbank",
+    "Correct."
+  ],
+  "expected": {
+    "claimed_agency": "RBI",
+    "amount": "25000",
+    "account_number": null,
+    "ifsc": null,
+    "upi_id": "rbi.unblock@okhdfcbank",
+    "phone_numbers": [],
+    "apps_requested": [],
+    "stage": "extraction",
+    "confirmed": ["upi_id"]
+  }
+}
