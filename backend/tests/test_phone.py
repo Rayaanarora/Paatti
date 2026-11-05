@@ -502,3 +502,20 @@ def test_single_call_view_masks_the_caller_number_without_operator_token():
     s = app.state.service.create_session(channel="phone", caller_id="+919876543210")
     assert c.get(f"/api/sessions/{s.id}").json()["caller_id"] == "+91******3210"
     assert c.get(f"/api/sessions/{s.id}", headers={"X-Operator-Token": "op"}).json()["caller_id"] == "+919876543210"
+
+
+def test_hangup_hands_the_phone_its_end_summary():
+    app = create_app(Settings())
+    with TestClient(app) as c:
+        sid = c.post("/api/sessions", json={"channel": "web-phone"}).json()["session_id"]
+        with c.websocket_connect(f"/ws/phone/{sid}") as ws:
+            ws.receive_json()
+            ws.send_json({"type": "answered"})
+            receive_type(ws, "paatti_text")
+            ws.send_json({"type": "text", "text": "Transfer to account 5021 0034 7781 9920"})
+            receive_type(ws, "paatti_text")
+            ws.send_json({"type": "hangup"})
+            summary = receive_type(ws, "ended")["summary"]
+    assert summary["session_id"] == sid and summary["scammer_turns"] == 1
+    assert [x["field"] for x in summary["captured"]] == ["account_number"]
+    assert app.state.store.get(sid).ended_at is not None

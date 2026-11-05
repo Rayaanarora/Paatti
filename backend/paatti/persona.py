@@ -189,7 +189,8 @@ class Persona:
             self.stats["intent"] += 1
             self.stats["blocked"] = self.stats.get("blocked", 0) + 1
             return safety
-        scripted = self.demo.reply(session.id, session.persona_key, last) if self.demo and last else None
+        captured = frozenset(f for f in ("account_number", "ifsc", "upi_id") if getattr(session.intel, f, None))
+        scripted = self.demo.reply(session.id, session.persona_key, last, captured) if self.demo and last else None
         if scripted:
             self.stats["demo"] += 1
             return scripted

@@ -256,6 +256,25 @@ class CallSession:
             "dispatches": self.dispatches,
         }
 
+    def summary(self) -> dict:
+        """What the end-of-call screens show: how long he was kept busy and what he gave away."""
+        captured = []
+        for field, label in (("account_number", "Account"), ("ifsc", "IFSC"), ("upi_id", "UPI ID"),
+                             ("amount", "Amount"), ("claimed_agency", "Claimed agency")):
+            f: IntelField | None = getattr(self.intel, field)
+            if f:
+                captured.append({"field": field, "label": label, "value": f.value,
+                                 "confirmed": bool(f.confirmed) if field in READBACK_FIELDS else None})
+        return {
+            "session_id": self.id,
+            "time_wasted": self.time_wasted(),
+            "stage": self.stage.value if self.stage else None,
+            "turn_count": len(self.turns),
+            "scammer_turns": sum(1 for t in self.turns if t.role == "scammer"),
+            "captured": captured,
+            "confirmed_count": sum(1 for c in captured if c["confirmed"]),
+        }
+
     def first_capture_t(self) -> float | None:
         """Call-relative time the first mule identifier was captured (starts the golden hour)."""
         ts = [f.t for f in (self.intel.account_number, self.intel.upi_id, self.intel.ifsc) if f]

@@ -34,6 +34,7 @@ CALLER_LINES = [
 class Step:
     cue: re.Pattern
     reply: str
+    skip_if: str | None = None  # intel field: once captured, this step no longer makes sense
 
 
 def _p(rx: str) -> re.Pattern:
@@ -54,7 +55,7 @@ STEPS: dict[str, list[Step]] = {
              "Neenga sonna maadhiri pannaren kanna."),
         Step(_p(r"transfer|immediately|officer is waiting|quick|fast|hurry"),
              "Seri kanna, bank app open panren. Aiyo, idhu UPI ID kekkudhu. GPay-la anuppalaama? "
-             "UPI ID sollunga, ippave anuppuren."),
+             "UPI ID sollunga, ippave anuppuren.", skip_if="upi_id"),
         Step(_p(r"\b(yes|haan|do it|now|quickly|send|done)\b"),
              "Seri kanna, anuppa poren. Oru nimisham, en paiyan phone pannaraan. Avan Chennai Cyber Crime-la "
              "thaan velai seyyaraan, avan kitta oru vaarthai kettuttu varen. Hello? Kanna? Line-la irukkeengala?"),
@@ -69,7 +70,7 @@ STEPS: dict[str, list[Step]] = {
              "Arrest? Hey Bhagwan! Theek hai, phone nahi kaatungi, kisi ko nahi bataungi. Jo bologe wahi karungi beta."),
         Step(_p(r"transfer|immediately|officer is waiting|quick|fast|hurry"),
              "Theek hai beta, bank ka app khol rahi hoon. Arre, yeh UPI ID maang raha hai. GPay se bhej doon? "
-             "UPI ID batao, abhi bhejti hoon."),
+             "UPI ID batao, abhi bhejti hoon.", skip_if="upi_id"),
         Step(_p(r"\b(yes|haan|do it|now|quickly|send|done)\b"),
              "Theek hai, bhej rahi hoon. Ek minute, mere bete ka phone aa raha hai. Woh Lucknow Cyber Crime mein "
              "kaam karta hai, usse ek baar pooch leti hoon. Hello? Beta? Line pe ho?"),
@@ -87,7 +88,8 @@ class DemoDirector:
     def __init__(self) -> None:
         self._pos: dict[str, int] = {}
 
-    def reply(self, session_id: str, persona: str, caller_line: str) -> str | None:
+    def reply(self, session_id: str, persona: str, caller_line: str,
+              captured: frozenset[str] = frozenset()) -> str | None:
         steps = STEPS.get(persona)
         if not steps or not caller_line.strip():
             return None
@@ -95,6 +97,8 @@ class DemoDirector:
             self._pos.clear()  # bounded memory
         pos = self._pos.get(session_id, 0)
         for i in range(pos, len(steps)):  # only forward: the script never repeats itself
+            if steps[i].skip_if and steps[i].skip_if in captured:
+                continue
             if steps[i].cue.search(caller_line):
                 self._pos[session_id] = i + 1
                 return steps[i].reply

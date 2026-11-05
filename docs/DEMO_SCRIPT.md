@@ -25,7 +25,22 @@ A rehearsed, about 90-second call. Paatti's replies are **pre-recorded when the 
 | 7 | "Fine, send it by UPI to **rbi.verify@ybl**." | "UPI rbi.verify@ybl. Sariya?" | UPI card amber |
 | 8 | "Yes! Do it now, madam, quickly." | "Seri kanna, anuppa poren. Oru nimisham, en paiyan phone pannaraan. Avan Chennai Cyber Crime-la thaan velai seyyaraan, avan kitta oru vaarthai kettuttu varen. Hello? Kanna? Line-la irukkeengala?" | UPI **locked**; the room laughs |
 
-**Then:** end the call, then **Download PDF** and show the evidence quotes, BNS 318/319 and the SHA-256 hash. Click **Report to 1930 / NCRP**: the golden-hour timer and reference appear.
+## The ending (about 20 seconds; rehearse it)
+
+A real scammer who hears "Cyber Crime" panics and cuts the call. That is the ending.
+
+1. **Pause** after Paatti's line 8 ("…Cyber Crime-la… Hello? Kanna? Line-la irukkeengala?"). Let the room react.
+2. **The scammer hangs up.** On the phone: tap the red **Step 6 · Scammer panics** card (or the red End button). On the dashboard-only fallback: the red **"Scammer hears 'Cyber Crime' and hangs up"** button at the end of the demo lines. On a real Twilio call: just hang up.
+3. **The phone** plays the three disconnect beeps and shows **"The scammer was kept busy 01:32"** with Account, IFSC and UPI ID each **Confirmed**.
+4. **The laptop** shows the **Call ended** banner: time lost, the three identifiers with ticks, and **"Report downloaded to this laptop"**. The PDF downloads by itself; open it from the browser's download bar.
+5. **Show the PDF:** the evidence quotes in the caller's own words, the stage timeline, BNS 318/319, and the SHA-256 hash.
+6. **Close with the hand-off:** click **Report to 1930 / NCRP** in the report panel. The golden-hour timer and the reference number appear.
+
+**Line to say:** "Ninety seconds of a scammer's time, three mule identifiers he confirmed himself, and a report ready for the bank before he finds his next victim."
+
+The banner and the report stay on screen until you press **Close**. Scanning a new QR or pressing **Call again** on the phone will not replace them; the laptop moves to a new call only once someone is talking on it. Every ended call in the **Calls** list also has its own report download button.
+
+On the phone, the script is the five lines of this table compressed (steps 1, 4, 5, 7, 8), then the hang-up card.
 
 ---
 

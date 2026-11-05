@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { apiUrl } from './api.js'
 import { Dispatch, LiveCalls, PhoneDemo } from './components/Ops.jsx'
-import { IntelCards, StageTracker, TimeWasted, Transcript } from './components/Panels.jsx'
+import { CallEnded, IntelCards, StageTracker, TimeWasted, Transcript } from './components/Panels.jsx'
 import { CHANNEL_LABEL } from './state.js'
 import { useCall } from './useCall.js'
 import { Icon } from './icons.jsx'
@@ -26,6 +26,36 @@ export default function App() {
   const active = Boolean(state.sessionId) && !state.ended
   const drivable = active && state.channel === 'web'
   const serverVoice = health?.voice === 'sarvam'
+  const reportUrl = (kind) => (state.sessionId ? apiUrl(`/api/sessions/${state.sessionId}/report.${kind}`) : undefined)
+
+  // When a call we watched live ends, download its report once, automatically.
+  const watch = useRef({ id: null, live: false, done: new Set() })
+  const [autoDownloaded, setAutoDownloaded] = useState(null)
+  const [closedId, setClosedId] = useState(null)
+  useEffect(() => {
+    const w = watch.current
+    if (w.id !== state.sessionId) {
+      w.id = state.sessionId
+      w.live = Boolean(state.sessionId) && !state.ended
+      return
+    }
+    if (!state.ended) {
+      w.live = true
+      return
+    }
+    if (w.live && state.turns.some((t) => t.role === 'scammer') && !w.done.has(state.sessionId)) {
+      w.done.add(state.sessionId)
+      const a = document.createElement('a')
+      a.href = apiUrl(`/api/sessions/${state.sessionId}/report.pdf`)
+      a.download = `mule-intel-${state.sessionId}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setAutoDownloaded(state.sessionId)
+    }
+    w.live = false
+  }, [state.sessionId, state.ended, state.turns])
+  const showEnded = state.ended && state.sessionId && closedId !== state.sessionId
 
   const submit = (e) => {
     e.preventDefault()
@@ -57,6 +87,15 @@ export default function App() {
           </span>
         </div>
       </header>
+
+      {showEnded && (
+        <CallEnded
+          state={state}
+          reportUrl={reportUrl}
+          autoDownloaded={autoDownloaded === state.sessionId}
+          onClose={() => setClosedId(state.sessionId)}
+        />
+      )}
 
       <main className="grid">
         <div className="col-left">
@@ -131,6 +170,9 @@ export default function App() {
                   {DEMO_LINES.map((l) => (
                     <button key={l} className="chip" onClick={() => call.sayAsScammer(l)}>{l}</button>
                   ))}
+                  <button className="chip chip-end" onClick={call.end}>
+                    <Icon name="phone" size={14} /> Scammer hears "Cyber Crime" and hangs up (ends the call)
+                  </button>
                 </div>
               </details>
             )}

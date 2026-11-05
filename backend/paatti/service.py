@@ -239,4 +239,4 @@ class CallService:
         self._turn_locks.pop(session.id, None)
         session.end()
         self.publish_state(session)
-        self.hub.publish(session.id, {"type": "ended"})
+        self.hub.publish(session.id, {"type": "ended", "summary": session.summary()})

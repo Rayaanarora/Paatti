@@ -511,6 +511,10 @@ def create_app(
                                         "lang": PROFILES[s.persona_key].language_code})
                 elif kind == "hangup":
                     hung_up = True
+                    if s.ended_at is None:
+                        service.end(s)
+                    # The phone's own socket is about to close: hand it the end summary directly.
+                    await send({"type": "ended", "summary": s.summary()})
                     break
         except WebSocketDisconnect:
             pass

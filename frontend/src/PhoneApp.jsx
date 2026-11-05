@@ -109,7 +109,64 @@ const DEMO_STEPS = [
     target: 'UPI: rbi.verify@ybl',
     line: 'Fine, send it by UPI to rbi.verify@ybl immediately.',
   },
+  {
+    step: 5,
+    tag: 'STEP 5 · PRESSURE',
+    target: 'Her twist',
+    line: 'Yes, correct! Do it now, madam, quickly.',
+  },
+  {
+    step: 6,
+    tag: 'STEP 6 · SCAMMER PANICS',
+    target: 'End of call',
+    line: 'He hears "Cyber Crime" and cuts the call.',
+    hangup: true,
+  },
 ]
+
+/** The network's disconnect tone: three short beeps, as when the other side hangs up. */
+function disconnectTone(ctx) {
+  if (!ctx || ctx.state === 'closed') return
+  try {
+    const now = ctx.currentTime
+    for (let i = 0; i < 3; i++) {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.frequency.value = 425
+      const t = now + i * 0.38
+      gain.gain.setValueAtTime(0, t)
+      gain.gain.linearRampToValueAtTime(0.14, t + 0.02)
+      gain.gain.setValueAtTime(0.14, t + 0.2)
+      gain.gain.linearRampToValueAtTime(0, t + 0.23)
+      osc.connect(gain).connect(ctx.destination)
+      osc.start(t)
+      osc.stop(t + 0.25)
+    }
+  } catch { /* audio closed */ }
+}
+
+function EndSummary({ summary }) {
+  const ids = summary.captured.filter((c) => c.confirmed !== null)
+  return (
+    <section className="end-summary" aria-label="Call summary">
+      <p className="end-title">{summary.scammer_turns > 0 ? 'The scammer was kept busy' : 'Call ended before he spoke'}</p>
+      <p className="end-time mono">{formatClock(summary.time_wasted)}</p>
+      {ids.length > 0 && (
+        <ul className="end-list">
+          {ids.map((c) => (
+            <li key={c.field} className={c.confirmed ? 'ok' : 'pending'}>
+              <span>{c.label}</span>
+              <span className="end-state">
+                {c.confirmed ? <><Icon name="check" size={12} /> Confirmed</> : 'Not confirmed'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="end-note">The full Mule Intel Report is on the laptop.</p>
+    </section>
+  )
+}
 
 const ECHO_TAIL_S = 0.35 // keep the mic closed this long after Paatti's audio ends
 const MAX_RETRIES = 6
@@ -127,6 +184,7 @@ export default function PhoneApp({ sessionId: initialId }) {
   const [subtitle, setSubtitle] = useState('')
   const [paattiSpeaking, setPaattiSpeaking] = useState(false)
   const [beatsSent, setBeatsSent] = useState(0)
+  const [summary, setSummary] = useState(null) // end-of-call summary from the server
   const usedInitial = useRef(false)
   const refs = useRef({
     ctx: null, ws: null, stream: null, node: null, sources: [], next: 0, htmlPlaying: 0, stopRing: null,
@@ -268,6 +326,7 @@ export default function PhoneApp({ sessionId: initialId }) {
 
   const call = async () => {
     setError('')
+    setSummary(null)
     const r = refs.current
     try {
       r.ctx = new (window.AudioContext || window.webkitAudioContext)()
@@ -337,6 +396,7 @@ export default function PhoneApp({ sessionId: initialId }) {
     r.stopRing?.()
     r.stopRing = null
     if (!r.stopLine) r.stopLine = startLineNoise(r.ctx) // the open-line hiss of a real call
+    r.wasLive = true
     setPhase('connected')
     send({ type: 'answered' }) // server greets now, so its echo guard matches what we play
     r.pending.splice(0).forEach((fn) => fn())
@@ -367,6 +427,7 @@ export default function PhoneApp({ sessionId: initialId }) {
         if (r.stream) setError('') // keep the no-mic note visible
         if (msg.resumed) {
           if (!r.stopLine) r.stopLine = startLineNoise(r.ctx)
+          r.wasLive = true
           setPhase('connected')
           send({ type: 'answered' })
         } else {
@@ -394,6 +455,7 @@ export default function PhoneApp({ sessionId: initialId }) {
       } else if (msg.type === 'notice') {
         setError(msg.message)
       } else if (msg.type === 'ended') {
+        if (msg.summary) setSummary(msg.summary)
         r.hungUp = true
         end()
       }
@@ -480,6 +542,8 @@ export default function PhoneApp({ sessionId: initialId }) {
     r.stopRing = null
     r.stopLine?.()
     r.stopLine = null
+    if (r.wasLive) disconnectTone(r.ctx)
+    r.wasLive = false
     r.pending = []
     clearAudio()
     try { r.rec?.stop() } catch { /* stopped */ }
@@ -498,7 +562,9 @@ export default function PhoneApp({ sessionId: initialId }) {
     const r = refs.current
     r.hungUp = true
     send({ type: 'hangup' })
-    r.ws?.close()
+    // Keep the socket open a moment so the server's end-of-call summary can arrive.
+    const ws = r.ws
+    setTimeout(() => ws?.close(), 1500)
     if (!silent) end()
   }
 
@@ -508,15 +574,17 @@ export default function PhoneApp({ sessionId: initialId }) {
     setDraft('')
   }
 
-  const sendBeat = (line) => {
-    if (phase === 'connected') send({ type: 'text', text: line })
+  const sendBeat = (s) => {
+    if (phase !== 'connected') return
+    if (s.hangup) hangup()
+    else send({ type: 'text', text: s.line })
   }
 
   const live = phase === 'connected' || phase === 'reconnecting'
   const nextBeat = Math.min(beatsSent, DEMO_STEPS.length - 1)
   const { name } = who
   return (
-    <div className={`phone ${phase}`}>
+    <div className={`phone ${phase} ${phase === 'ended' && summary ? 'has-summary' : ''}`}>
       <div className="wa-header">
         <Icon name="lock" size={12} className="wa-lock" />
         <span>End-to-end encrypted</span>
@@ -535,7 +603,7 @@ export default function PhoneApp({ sessionId: initialId }) {
             {phase === 'ringing' && 'Ringing…'}
             {phase === 'connected' && formatClock(seconds)}
             {phase === 'reconnecting' && 'Reconnecting…'}
-            {phase === 'ended' && `Call ended · ${formatClock(seconds)}`}
+            {phase === 'ended' && `Call ended · ${formatClock(summary?.time_wasted ?? seconds)}`}
             {phase === 'error' && 'Call failed'}
           </p>
         </div>
@@ -573,7 +641,8 @@ export default function PhoneApp({ sessionId: initialId }) {
             )}
           </>
         )}
-        {error && <p className="phone-error" role="alert">{error}</p>}
+        {error && phase !== 'ended' && <p className="phone-error" role="alert">{error}</p>}
+        {phase === 'ended' && summary && <EndSummary summary={summary} />}
 
         {live && (
           <div className="phone-demo-sheet">
@@ -589,16 +658,19 @@ export default function PhoneApp({ sessionId: initialId }) {
                   <button
                     type="button"
                     key={s.step}
-                    className={`script-card ${isCurrent ? 'current' : ''} ${isDone ? 'done' : ''}`}
-                    onClick={() => sendBeat(s.line)}
+                    className={`script-card ${isCurrent ? 'current' : ''} ${isDone ? 'done' : ''} ${s.hangup ? 'hangup' : ''}`}
+                    onClick={() => sendBeat(s)}
                     disabled={phase !== 'connected'}
                   >
                     <div className="script-card-header">
                       <span className="script-tag">{s.tag}</span>
                       <span className="script-target">{s.target}</span>
                     </div>
-                    <p className="script-speech-text">“{s.line}”</p>
-                    <span className="script-tap-hint">{isDone ? <><Icon name="check" size={12} /> Sent</> : 'Tap to send'}</span>
+                    <p className="script-speech-text">{s.hangup ? s.line : `“${s.line}”`}</p>
+                    <span className="script-tap-hint">
+                      {s.hangup ? <><Icon name="phone" size={12} /> Tap to hang up</>
+                        : isDone ? <><Icon name="check" size={12} /> Sent</> : 'Tap to send'}
+                    </span>
                   </button>
                 )
               })}

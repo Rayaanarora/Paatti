@@ -27,8 +27,12 @@ export function LiveCalls({ currentId, currentLive = false, onOpen }) {
         const ids = new Set(list.map((c) => c.session_id))
         if (follow) {
           const cur = current.current
+          // An ended call stays on screen (with its report) until a new phone call is really
+          // under way: someone has spoken on it, not just an unused QR or a redial ringing.
+          const showingEnded = Boolean(cur.id) && !cur.live
           const fresh = list.find((c) => c.channel !== 'web' && !c.ended && c.session_id !== cur.id
-            && (!cur.live || (seen.current && !seen.current.has(c.session_id))))
+            && (showingEnded ? (c.turn_count || 0) >= 2
+              : !cur.live || (seen.current && !seen.current.has(c.session_id))))
           if (fresh) onOpen(fresh.session_id)
         }
         seen.current = ids
@@ -48,7 +52,7 @@ export function LiveCalls({ currentId, currentLive = false, onOpen }) {
       {calls.length === 0 ? <p className="muted">No calls yet.</p> : (
         <ul className="call-list">
           {calls.slice(0, 6).map((c) => (
-            <li key={c.session_id}>
+            <li key={c.session_id} className="call-item">
               <button className={`call-row ${c.session_id === currentId ? 'on' : ''}`} onClick={() => onOpen(c.session_id)}>
                 <span className={`live-dot ${c.ended ? '' : 'on'}`} aria-label={c.ended ? 'ended' : 'live'} />
                 <span className="call-main">
@@ -57,6 +61,11 @@ export function LiveCalls({ currentId, currentLive = false, onOpen }) {
                 </span>
                 <span className="call-meta">{c.stage || '—'} · {formatClock(c.time_wasted)}</span>
               </button>
+              {c.ended && c.turn_count > 0 && (
+                <a className="call-report" href={apiUrl(`/api/sessions/${c.session_id}/report.pdf`)} aria-label="Download this call's report" title="Download report (PDF)">
+                  <Icon name="download" size={16} />
+                </a>
+              )}
             </li>
           ))}
         </ul>

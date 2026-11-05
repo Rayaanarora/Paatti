@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '../icons.jsx'
-import { INTEL_CARDS, STAGES, cardStatus, formatClock, liveSeconds, stageIndex } from '../state.js'
+import { INTEL_CARDS, STAGES, cardStatus, formatClock, groupDigits, liveSeconds, stageIndex } from '../state.js'
 
 export function Transcript({ turns, pendingReadback, speaking, personaName = 'Paatti' }) {
   const end = useRef(null)
@@ -135,5 +135,50 @@ export function TimeWasted({ state }) {
       </div>
       <div className="timer-value">{formatClock(liveSeconds(state))}</div>
     </div>
+  )
+}
+
+const ENDED_IDS = [
+  ['account_number', 'Account'],
+  ['ifsc', 'IFSC'],
+  ['upi_id', 'UPI ID'],
+]
+
+/** The end of a call: what was won, and the report, which stays on screen until a new call starts. */
+export function CallEnded({ state, reportUrl, autoDownloaded, onClose }) {
+  const scammerSpoke = state.turns.some((t) => t.role === 'scammer')
+  const ids = ENDED_IDS.map(([key, label]) => ({ key, label, f: state.intel[key] }))
+  const confirmed = ids.filter((x) => x.f?.confirmed).length
+  return (
+    <section className="ended" aria-label="Call ended" role="status">
+      <div className="ended-main">
+        <span className="ended-icon" aria-hidden="true"><Icon name="phone" size={18} /></span>
+        <div>
+          <h2 className="ended-title">Call ended</h2>
+          <p className="ended-sub">
+            {scammerSpoke
+              ? <>The scammer lost <b className="mono">{formatClock(state.timeWasted)}</b> and confirmed {confirmed} of 3 mule identifiers.</>
+              : 'The call ended before the caller said anything.'}
+          </p>
+        </div>
+      </div>
+      {scammerSpoke && (
+        <ul className="ended-ids">
+          {ids.map(({ key, label, f }) => (
+            <li key={key} className={f?.confirmed ? 'ok' : f ? 'pending' : 'none'}>
+              <span className="ended-id-label">{label}</span>
+              <span className="mono">{f ? (key === 'account_number' ? groupDigits(f.value) : f.value) : 'not given'}</span>
+              {f?.confirmed && <Icon name="check" size={14} label="confirmed" />}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="ended-actions">
+        <a className="btn primary" href={reportUrl('pdf')}><Icon name="download" size={16} /> Download report (PDF)</a>
+        <a className="btn" href={reportUrl('json')}>JSON</a>
+        <button className="btn ghost" onClick={onClose}>Close</button>
+        {autoDownloaded && <span className="ended-note"><Icon name="check" size={14} /> Report downloaded to this laptop</span>}
+      </div>
+    </section>
   )
 }

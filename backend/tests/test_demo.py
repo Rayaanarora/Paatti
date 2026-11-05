@@ -69,3 +69,32 @@ def test_startup_prewarms_every_demo_line(monkeypatch):
     spoken = set(sarvam.spoken)
     for reply in [s.reply for s in STEPS["paatti"]]:
         assert all(chunk in spoken for chunk in split_for_tts(reply))
+
+
+PHONE_LINES = [  # frontend/src/PhoneApp.jsx DEMO_STEPS 1-5 (step 6 is the hang-up)
+    "This is Inspector Rajesh Verma from CBI. Your Aadhaar is linked to a money-laundering case.",
+    "To clear your name, transfer Rs 4,50,000 to safe account: 5021 0034 7781 9920.",
+    "Yes correct, the IFSC is HDFC0001234. Transfer immediately.",
+    "Fine, send it by UPI to rbi.verify@ybl immediately.",
+    "Yes, correct! Do it now, madam, quickly.",
+]
+
+
+def test_phone_script_ends_on_the_cyber_crime_twist(monkeypatch):
+    for persona in ("paatti", "dadi"):
+        monkeypatch.setenv("PAATTI_DEMO_MODE", "1")
+        c = TestClient(create_app(Settings()))
+        sid = c.post("/api/sessions", json={"persona": persona}).json()["session_id"]
+        replies = [c.post(f"/api/sessions/{sid}/turn", json={"text": line}).json() for line in PHONE_LINES]
+        # "quickly" must not replay "tell me the UPI ID" once the UPI is already captured
+        assert replies[-1]["paatti"]["text"] == STEPS[persona][-1].reply
+        assert "Cyber Crime" in replies[-1]["paatti"]["text"]
+
+
+def test_end_summary_lists_what_the_scammer_gave_away(monkeypatch):
+    c, sid, _ = run_script(monkeypatch)
+    c.post(f"/api/sessions/{sid}/end")
+    s = c.app.state.store.get(sid).summary()
+    assert s["confirmed_count"] == 3 and s["scammer_turns"] == len(CALLER_LINES)
+    fields = {x["field"]: x for x in s["captured"]}
+    assert fields["account_number"]["confirmed"] and fields["amount"]["confirmed"] is None
