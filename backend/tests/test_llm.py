@@ -11,6 +11,7 @@ from paatti.config import Settings
 from paatti.extractor import LLMExtractor, render_transcript, to_findings
 from paatti.llm import AnthropicBackend, GeminiBackend, LooseExtraction, LooseFinding, make_backend
 from paatti.persona import Persona, guard_reply
+from paatti.prepared import ReplyCache
 from paatti.schema import Stage
 from paatti.session import CallSession, RepeatRegistry
 
@@ -380,3 +381,85 @@ async def test_gemini_hanging_model_is_skipped_within_one_turn():
     b = gemini(fake, llm_timeout_s=2.0, gemini_attempt_timeout_s=0.3)
     assert await b.chat("s", [{"role": "user", "content": "x"}], None) == "fast model"
     assert [c["model"] for c in fake.calls] == ["m-a", "m-b"]
+
+
+# ---- streaming replies -------------------------------------------------------
+
+class StreamBackend:
+    name = "fake"
+
+    def __init__(self, deltas):
+        self.deltas = deltas
+
+    async def chat(self, *a):
+        return None
+
+    async def chat_stream(self, system, messages, note):
+        for d in self.deltas:
+            yield d
+
+    async def extract(self, *a):
+        return None
+
+
+async def test_reply_stream_yields_sentences_and_caches_full_reply(tmp_path):
+    from paatti.prepared import ReplyCache
+
+    cache = ReplyCache(tmp_path / "c.json")
+    p = Persona(Settings(), backend=StreamBackend(["Aiyo kanna, enna ", "solreenga? Naan oru retired ", "teacher, enakku theriyaadhu."]),
+                cache=cache)
+    s = session_with("This is CBI, your Aadhaar is linked to a money laundering case")
+    out = [x async for x in p.reply_stream(s)]
+    assert out == ["Aiyo kanna, enna solreenga?", "Naan oru retired teacher, enakku theriyaadhu."]
+    assert len(cache) == 1 and p.stats["llm"] == 1
+
+
+async def test_reply_stream_falls_back_when_first_sentence_breaks_character():
+    p = Persona(Settings(), backend=StreamBackend(["As an AI language model, I cannot. ", "Sorry."]), cache=ReplyCache(None))
+    s = session_with("Listen carefully madam, what will you do now?")
+    out = [x async for x in p.reply_stream(s)]
+    assert len(out) == 1 and out[0] in sum(p.profile(s).scripted.values(), [])
+
+
+async def test_reply_stream_stops_at_a_bad_later_sentence():
+    p = Persona(Settings(), backend=StreamBackend(["Aiyo kanna, enna solreenga? ", "My OTP is 482913. ", "More."]),
+                cache=ReplyCache(None))
+    s = session_with("Listen carefully madam, what will you do now?")
+    out = [x async for x in p.reply_stream(s)]
+    assert out == ["Aiyo kanna, enna solreenga?"]
+
+
+async def test_reply_stream_readback_is_immediate():
+    p = Persona(Settings(), backend=StreamBackend(["never used. "]), cache=ReplyCache(None))
+    out = [x async for x in p.reply_stream(session_with("Send to account 3456 7890 1234"))]
+    assert len(out) == 1 and "345678901234" in out[0].replace(" ", "")
+
+
+class FakeStreamModels:
+    def __init__(self, by_model):
+        self.by_model = by_model
+        self.calls = []
+
+    async def generate_content_stream(self, **kw):
+        self.calls.append(kw["model"])
+        out = self.by_model[kw["model"]]
+        if isinstance(out, Exception):
+            raise out
+
+        async def gen():
+            for t in out:
+                yield SimpleNamespace(text=t)
+        return gen()
+
+
+async def test_gemini_chat_stream_rotates_before_first_token():
+    fake = FakeStreamModels({"m-a": api_error(503), "m-b": ["Aiyo ", "kanna."]})
+    b = gemini(fake, models=("m-a", "m-b"))
+    out = [t async for t in b.chat_stream("s", [{"role": "user", "content": "x"}], None)]
+    assert out == ["Aiyo ", "kanna."] and fake.calls == ["m-a", "m-b"]
+
+
+async def test_gemini_chat_stream_respects_daily_cap():
+    fake = FakeStreamModels({"m-a": ["x"]})
+    b = gemini(fake, models=("m-a",), gemini_daily_cap=0)
+    assert [t async for t in b.chat_stream("s", [{"role": "user", "content": "x"}], None)] == []

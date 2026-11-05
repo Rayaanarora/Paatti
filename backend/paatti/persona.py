@@ -16,6 +16,7 @@ from .config import Settings
 from .llm import LLMBackend, make_backend
 from .personas import Profile, get_profile
 from .prepared import IntentResponder, ReplyCache
+from .speech import SentenceStreamer
 from .schema import Stage
 from .session import CallSession
 from .validators import words_to_digits
@@ -116,6 +117,84 @@ class Persona:
                 log.info("persona reply rejected by guard; using script")
         self.stats["script"] += 1
         return self.scripted_reply(session)
+
+    async def reply_stream(self, session: CallSession):
+        """Like reply(), but yields the reply sentence by sentence as soon as each is safe to say.
+
+        Read-backs, intent lines, cached and scripted replies come out at once. An LLM reply
+        streams; each sentence passes the output guard before it is released. If the first
+        sentence fails the guard, a scripted line is used instead; if a later one fails, the
+        reply stops there (what was already said was safe)."""
+        stream_fn = getattr(self.backend, "chat_stream", None) if self.backend else None
+        quick = self._quick_reply(session)
+        if quick is not None or stream_fn is None:
+            yield quick if quick is not None else await self.reply(session)
+            return
+        profile = self.profile(session)
+        splitter = SentenceStreamer()
+        spoken: list[str] = []
+        words = 0
+        broke = False
+        async for delta in stream_fn(profile.system_prompt, self.build_messages(session), self.operator_note(session)):
+            for sentence in splitter.feed(delta):
+                safe = guard_reply(sentence, session)
+                if not safe:
+                    broke = True
+                    break
+                spoken.append(safe)
+                words += len(safe.split())
+                yield safe
+                if words >= MAX_WORDS:
+                    broke = True
+                    break
+            if broke:
+                break
+        if not broke:
+            for sentence in splitter.flush():
+                safe = guard_reply(sentence, session)
+                if safe:
+                    spoken.append(safe)
+                    yield safe
+        if spoken:
+            self.stats["llm"] += 1
+            self._remember(session, " ".join(spoken))
+        else:
+            self.stats["script"] += 1
+            yield self.scripted_reply(session)
+
+    def _quick_reply(self, session: CallSession) -> str | None:
+        """Read-back, intent line or cached reply: no model call needed."""
+        pending = session.pending_readback()
+        if pending:
+            self.stats["readback"] += 1
+            return session.readback_line(*pending)
+        last = self._last_caller_line(session)
+        intent_line = self.intents.reply(session.id, session.persona_key, last) if last else None
+        if intent_line:
+            self.stats["intent"] += 1
+            return intent_line
+        key, cacheable, prev = self._cache_key(session)
+        cached = self.cache.get(key) if cacheable else None
+        if cached and cached != prev and guard_reply(cached, session):
+            self.stats["cache"] += 1
+            return cached
+        return None
+
+    @staticmethod
+    def _last_caller_line(session: CallSession) -> str:
+        return next((t.text for t in reversed(session.turns) if t.role == "scammer"), "")
+
+    def _cache_key(self, session: CallSession) -> tuple[str, bool, str]:
+        last = self._last_caller_line(session)
+        prev = next((t.text for t in reversed(session.turns) if t.role == "paatti"), "")
+        key = ReplyCache.key(session.persona_key, session.stage.value if session.stage else None,
+                             self.missing_fields(session), f"{prev}\n{last}")
+        return key, len(last.split()) >= 4, prev
+
+    def _remember(self, session: CallSession, text: str) -> None:
+        key, cacheable, _ = self._cache_key(session)
+        if cacheable:
+            self.cache.put(key, text)
 
     def scripted_reply(self, session: CallSession) -> str:
         profile = self.profile(session)

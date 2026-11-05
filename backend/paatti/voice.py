@@ -20,14 +20,14 @@ from typing import Awaitable, Callable
 from .audio import VAD, pcm_from_wav, resample, wav_from_pcm
 from .personas import get_profile
 from .sarvam import SarvamClient, SarvamError
-from .speech import synth_stream
+from .speech import speak_stream, synth_stream
 from .service import CallService
 from .session import CallSession
 
 log = logging.getLogger(__name__)
 
 STT_RATE = 16000
-FILLER_AFTER_S = 0.4
+FILLER_AFTER_S = 0.0  # acknowledgement starts immediately
 SECOND_FILLER_AFTER_S = 3.0
 
 
@@ -143,12 +143,17 @@ class VoiceCall:
                 log.exception("voice turn failed")
 
     async def handle_utterance(self, pcm: bytes) -> None:
+        # Instant acknowledgement: a cached "Haan kanna..." starts while STT and the model work,
+        # so there is no dead air after the caller stops talking.
+        ack = asyncio.create_task(self.play(next(self._fillers), cache=True))
         wav = wav_from_pcm(resample(pcm, self.in_rate, STT_RATE), STT_RATE)
         try:
             text = await self.sarvam.transcribe(wav, filename="turn.wav", mime="audio/wav")
         except SarvamError as e:
             self.service.hub.publish(self.session.id, {"type": "notice", "message": f"speech-to-text failed: {e}"})
+            await ack
             return
+        await ack
         if not text:
             self._empty_streak += 1
             if self._empty_streak >= 2:
@@ -156,20 +161,46 @@ class VoiceCall:
                 await self.play(next(self._unclear), cache=True)
             return
         self._empty_streak = 0
-        reply_task = asyncio.create_task(self.service.respond(self.session, text))
-        # Up to two fillers while the model thinks (Gemini can take ~5 s), so the wait
-        # sounds like a grandmother fumbling for her pen rather than dead air.
-        waits = (FILLER_AFTER_S, SECOND_FILLER_AFTER_S)
-        paatti = None
-        for wait in waits:
+        await self.reply_streaming(text)
+
+    async def reply_streaming(self, text: str) -> None:
+        """Speak the reply sentence by sentence as the model writes it; if the first sentence
+        is slow (> SECOND_FILLER_AFTER_S), fill the gap once more."""
+        sentences: asyncio.Queue = asyncio.Queue()
+
+        async def produce() -> None:
             try:
-                paatti = await asyncio.wait_for(asyncio.shield(reply_task), wait)
-                break
+                async for sentence in self.service.respond_stream(self.session, text):
+                    await sentences.put(sentence)
+            finally:
+                await sentences.put(None)
+
+        producer = asyncio.create_task(produce())
+        try:
+            try:
+                first = await asyncio.wait_for(sentences.get(), SECOND_FILLER_AFTER_S)
             except asyncio.TimeoutError:
                 await self.play(next(self._fillers), cache=True)
-        if paatti is None:
-            paatti = await reply_task
-        await self.play(paatti["text"])
+                first = await sentences.get()
+
+            async def stream():
+                item = first
+                while item is not None:
+                    yield item
+                    item = await sentences.get()
+
+            await speak_stream(stream(), self.sarvam, self.profile.language_code, self.profile.tts_speaker,
+                               self._send_chunk)
+        except (SarvamError, ValueError, EOFError, wave.Error) as e:
+            self.service.hub.publish(self.session.id, {"type": "notice", "message": f"voice output failed: {e}"})
+        finally:
+            await producer
+
+    async def _send_chunk(self, _chunk: str, wav: bytes) -> None:
+        pcm, rate = pcm_from_wav(wav)
+        pcm = resample(pcm, rate, self.out_rate)
+        self._queue_playback(pcm)
+        await self.send_audio(pcm)
 
     # ---- audio out -------------------------------------------------------
     async def _tts(self, text: str, cache: bool = False) -> bytes:

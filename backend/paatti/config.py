@@ -73,7 +73,7 @@ class Settings:
     audio_cache_dir: str | None = field(default_factory=lambda: os.getenv(
         "PAATTI_AUDIO_CACHE_DIR", str(Path(__file__).parent / "data" / "audio_cache")) or None)
     audio_cache_write: bool = field(default_factory=lambda: os.getenv("PAATTI_AUDIO_CACHE_WRITE", "1") != "0")
-    tts_pace: float = field(default_factory=lambda: float(os.getenv("SARVAM_TTS_PACE", "1.2")))
+    tts_pace: float = field(default_factory=lambda: float(os.getenv("SARVAM_TTS_PACE", "1.5")))
 
     cors_origins: list[str] = field(
         default_factory=lambda: _list("PAATTI_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")

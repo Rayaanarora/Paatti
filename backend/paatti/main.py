@@ -8,6 +8,7 @@ import binascii
 import logging
 import os
 import wave
+from contextlib import asynccontextmanager
 import secrets
 import time
 from pathlib import Path
@@ -20,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .audio import pcm_from_wav, resample, wav_from_pcm
-from .speech import synth_stream
+from .speech import speak_stream
 from .config import Settings
 from .db import Database, DbRepeatRegistry
 from .extractor import LLMExtractor
@@ -83,7 +84,13 @@ def create_app(
     limiter = RateLimiter(settings.sessions_per_minute)
     telephony = TelephonyBridge(settings, service, sarvam, http=twilio_http)
 
-    app = FastAPI(title="Paatti", version="2.0")
+    @asynccontextmanager
+    async def lifespan(_app):
+        if sarvam:  # pre-synthesise acknowledgement fillers so they play instantly
+            asyncio.create_task(warm_fillers())
+        yield
+
+    app = FastAPI(title="Paatti", version="2.0", lifespan=lifespan)
     app.state.service = service
     app.state.store = store
     app.add_middleware(
@@ -268,6 +275,7 @@ def create_app(
                         reply({"type": "error", "message": "server voice not configured; use browser voice or text"})
                         continue
                     s.add_audio_chunk(data)
+                    send_filler(reply, s)  # instant "Haan kanna..." while STT and the model work
                     try:
                         mime = str(msg.get("mime", "audio/wav")).split(";")[0].strip()[:40] or "audio/wav"
                         ext = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a",
@@ -278,11 +286,10 @@ def create_app(
                         continue
                     if text:
                         try:
-                            paatti = await service.respond(s, text[: settings.max_turn_chars])
+                            await _speak_streaming(reply, s, text[: settings.max_turn_chars])
                         except HTTPException as e:
                             reply({"type": "error", "message": e.detail})
                             continue
-                        await _speak_to(reply, s, paatti["text"])
                 elif kind == "tick":
                     reply({"type": "state", "state": s.snapshot()})
                 elif kind == "end":
@@ -295,22 +302,49 @@ def create_app(
             sender.cancel()
             hub.unsubscribe(s.id, q)
 
-    async def _speak_to(reply, s, text: str) -> None:
+    filler_wavs: dict[str, list[str]] = {}  # persona -> base64 16 kHz WAVs, pre-synthesised
+    filler_turn: dict[str, int] = {}
+
+    def send_filler(reply, s) -> None:
+        wavs = filler_wavs.get(s.persona_key)
+        if wavs:
+            i = filler_turn.get(s.id, 0)
+            filler_turn[s.id] = i + 1
+            reply({"type": "paatti_audio", "format": "wav", "filler": True, "data": wavs[i % len(wavs)]})
+
+    async def warm_fillers() -> None:
+        from .personas import PROFILES as _P
+
+        for key, profile in _P.items():
+            out = []
+            for line in profile.fillers:
+                try:
+                    wav = await sarvam.synthesize(line, language_code=profile.language_code,
+                                                  speaker=profile.tts_speaker)
+                    pcm, rate = pcm_from_wav(wav)
+                    out.append(base64.b64encode(wav_from_pcm(resample(pcm, rate, PHONE_RATE), PHONE_RATE)).decode())
+                except (SarvamError, EOFError, ValueError, wave.Error):
+                    continue
+            if out:
+                filler_wavs[key] = out
+
+    async def _speak_streaming(reply, s, text: str) -> None:
+        """Dashboard voice: stream the reply as 16 kHz chunks while the model is still writing."""
         from .personas import get_profile
 
         profile = get_profile(s.persona_key)
+
+        async def send(_chunk: str, wav: bytes) -> None:
+            try:
+                pcm, rate = pcm_from_wav(wav)
+                out = wav_from_pcm(resample(pcm, rate, PHONE_RATE), PHONE_RATE)
+            except (EOFError, ValueError, wave.Error):
+                out = wav  # not a WAV we can resample: forward as-is, the browser can still play it
+            reply({"type": "paatti_audio", "format": "wav", "data": base64.b64encode(out).decode()})
+
         try:
-            # Stream sentence by sentence at 16 kHz: first words arrive fast, payloads stay small.
-            seq = 0
-            async for _chunk, wav in synth_stream(sarvam, text, profile.language_code, profile.tts_speaker):
-                try:
-                    pcm, rate = pcm_from_wav(wav)
-                    out = wav_from_pcm(resample(pcm, rate, PHONE_RATE), PHONE_RATE)
-                except (EOFError, ValueError, wave.Error):
-                    out = wav  # not a WAV we can resample: forward as-is, the browser can still play it
-                reply({"type": "paatti_audio", "format": "wav", "seq": seq,
-                       "data": base64.b64encode(out).decode()})
-                seq += 1
+            await speak_stream(service.respond_stream(s, text), sarvam, profile.language_code,
+                               profile.tts_speaker, send)
         except (SarvamError, ValueError) as e:
             reply({"type": "notice", "message": f"voice output unavailable: {e}"})
 

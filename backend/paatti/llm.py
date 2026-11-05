@@ -204,6 +204,70 @@ class GeminiBackend:
         text = (resp.text or "").strip() if resp is not None else ""
         return text or None
 
+    async def chat_stream(self, system: str, messages: list[dict], note: str | None):
+        """Yield reply text as Gemini generates it. Rotates models only before the first
+        token; once text has started, a failure just ends the stream."""
+        from google.genai import errors as genai_errors
+        from google.genai import types
+
+        if not self.pool.budget_left():
+            return
+        contents = [
+            types.Content(role="model" if m["role"] == "assistant" else "user", parts=[types.Part(text=m["content"])])
+            for m in messages
+        ]
+        prompt = system + (f"\n\n{note}" if note else "")
+        deadline = time.monotonic() + self.settings.llm_timeout_s
+        queue = self.pool.candidates(self.settings.gemini_models)
+        attempts = 0
+        while queue and attempts < 4:
+            slot = queue.pop(0)
+            remaining = min(deadline - time.monotonic(), self.settings.gemini_attempt_timeout_s)
+            if remaining < 0.3:
+                return
+            attempts += 1
+            self.pool.used(slot)
+            started = False
+            try:
+                stream = await asyncio.wait_for(
+                    self.clients[slot.key_index].aio.models.generate_content_stream(
+                        model=slot.model, contents=contents,
+                        config=self._config(slot, prompt, max_output_tokens=160)),
+                    timeout=remaining)
+                it = stream.__aiter__()
+                while True:
+                    try:
+                        chunk = await asyncio.wait_for(it.__anext__(), timeout=remaining if not started else 8)
+                    except StopAsyncIteration:
+                        return
+                    text = getattr(chunk, "text", None) or ""
+                    if text:
+                        started = True
+                        yield text
+            except genai_errors.APIError as e:
+                code = getattr(e, "code", 0) or 0
+                log.warning("gemini stream %s failed with %s", slot.model, code)
+                if started:
+                    return
+                if code == 429:
+                    self.pool.cool(slot, 60)
+                elif code >= 500:
+                    self.pool.cool(slot, 20)
+                elif code == 404:
+                    slot.dead = True
+                elif code in (401, 403):
+                    self.pool.retire_key(slot.key_index)
+                elif code == 400 and not slot.no_thinking and "think" in str(e).lower():
+                    slot.no_thinking = True
+                    queue.insert(0, slot)
+                else:
+                    return
+            except (httpx.HTTPError, asyncio.TimeoutError) as e:
+                log.warning("gemini stream %s %s", slot.model, type(e).__name__)
+                if started:
+                    return
+                self.pool.cool(slot, 10)
+
     async def extract(self, system: str, transcript: str) -> LooseExtraction | None:
         resp = await self._generate(self.settings.gemini_extractor_models, transcript, system, 30,
                                     response_mime_type="application/json", response_schema=LooseExtraction)

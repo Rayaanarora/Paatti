@@ -17,6 +17,7 @@ from pathlib import Path
 import httpx
 
 from .config import Settings
+from .speech import normalize_for_tts
 
 log = logging.getLogger(__name__)
 
@@ -93,6 +94,7 @@ class SarvamClient:
 
     async def synthesize(self, text: str, language_code: str = "ta-IN", speaker: str | None = None) -> bytes:
         """Text-to-speech in a slow, elderly voice. Returns WAV bytes."""
+        text = normalize_for_tts(text)  # '...' -> short pause: natural pacing
         cached = self.cached(text, language_code, speaker)
         if cached is not None:
             return cached
@@ -127,10 +129,7 @@ class SarvamClient:
             return None
         speaker = speaker or self.settings.tts_speaker
         text = text.strip()
-        if (language_code, speaker, self.settings.tts_pace) == ("ta-IN", "kavitha", 1.2):
-            raw = text  # legacy key: keeps the committed pre-generated Paatti lines valid
-        else:
-            raw = f"{language_code}|{speaker}|{self.settings.tts_pace}|{text}"
+        raw = f"{language_code}|{speaker}|{self.settings.tts_pace}|{normalize_for_tts(text)}"
         return Path(self.settings.audio_cache_dir) / f"{hashlib.sha256(raw.encode()).hexdigest()[:16]}.wav"
 
     def cached(self, text: str, language_code: str = "ta-IN", speaker: str | None = None) -> bytes | None:

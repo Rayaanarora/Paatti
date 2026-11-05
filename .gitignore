@@ -10,3 +10,4 @@ frontend/dist/
 .env
 evals/results/
 backend/data/
+backend/paatti/data/audio_cache/

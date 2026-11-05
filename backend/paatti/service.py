@@ -175,6 +175,34 @@ class CallService:
         async with lock:
             return await self._respond(session, text, background_extract)
 
+    async def respond_stream(self, session: CallSession, text: str):
+        """Voice version of respond(): yields the persona's reply sentence by sentence as it is
+        generated, so speech can start before the whole reply exists. Records the turn at the end."""
+        if len(session.turns) >= self.settings.max_turns_per_call:
+            self.end(session)
+            raise HTTPException(status_code=409, detail="call reached its turn limit")
+        lock = self._turn_locks.setdefault(session.id, asyncio.Lock())
+        async with lock:
+            text = text.strip()[: self.settings.max_turn_chars]
+            with session.lock:
+                session.add_scammer_turn(text)
+                scammer = session.turns[-1].model_dump(mode="json")
+            self.hub.publish(session.id, {"type": "turn", "turn": scammer})
+            self.publish_state(session)
+            spoken: list[str] = []
+            try:
+                async for sentence in self.persona.reply_stream(session):
+                    spoken.append(sentence)
+                    yield sentence
+            finally:
+                reply = " ".join(spoken) or self.persona.scripted_reply(session)
+                with session.lock:
+                    paatti = session.add_paatti_turn(reply).model_dump(mode="json")
+                self.hub.publish(session.id, {"type": "turn", "turn": paatti})
+                self.persist(session)
+                if self.extractor.enabled and should_extract(session):
+                    self._spawn(self._extract(session))
+
     async def _respond(self, session: CallSession, text: str, background_extract: bool) -> dict:
         if len(session.turns) >= self.settings.max_turns_per_call:
             self.end(session)
