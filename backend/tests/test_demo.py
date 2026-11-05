@@ -134,3 +134,37 @@ def test_prewarm_records_demo_personas_first_and_backs_off_on_429(monkeypatch):
     greeting = split_for_tts(PROFILES["paatti"].greeting)
     assert sarvam.spoken[: len(greeting)] == greeting                 # the demo persona goes first
     assert sarvam.failed in sarvam.spoken                              # the 429'd clip was retried
+
+
+def test_prewarm_only_records_demo_personas_and_stops_when_sarvam_keeps_refusing(monkeypatch):
+    import time
+
+    from paatti.personas import PROFILES
+    from paatti.sarvam import SarvamError
+    from tests.test_phone import FakeSarvam
+
+    class Langs(FakeSarvam):
+        def __init__(self, refuse=False):
+            super().__init__()
+            self.langs, self.refuse, self.calls = set(), refuse, 0
+
+        async def synthesize(self, text, language_code="ta-IN", speaker=None, retry_429=True):
+            self.calls += 1
+            if self.refuse:
+                raise SarvamError("text-to-speech failed (429: Rate limit exceeded)")
+            self.langs.add(language_code)
+            return await super().synthesize(text, language_code, speaker)
+
+    monkeypatch.setenv("PAATTI_DEMO_MODE", "1")
+    monkeypatch.setenv("PAATTI_WARM_INTERVAL_S", "0")
+    ok = Langs()
+    with TestClient(create_app(Settings(), sarvam=ok)):
+        time.sleep(0.5)
+    assert ok.langs == {PROFILES["paatti"].language_code, PROFILES["dadi"].language_code}
+
+    refused = Langs(refuse=True)
+    app = create_app(Settings(), sarvam=refused)
+    app.state.warm_backoff_s = 0.001
+    with TestClient(app):
+        time.sleep(0.5)
+    assert refused.calls <= 4  # gives up after repeated 429s instead of burning the limit

@@ -372,19 +372,27 @@ def create_app(
 
         scripted = all_scripted_replies() if settings.demo_mode else {}
         first = [k for k in dict.fromkeys([settings.persona_key, "paatti", "dadi"]) if k in _P]
-        order = first + [k for k in _P if k not in first]
+        # Only the demo personas by default: every clip costs a Sarvam request, and the free Render
+        # disk is wiped on each deploy AND each wake from sleep. Other personas synthesise live.
+        order = first + ([k for k in _P if k not in first] if app.state.warm_all else [])
+        state = {"limited": 0}
 
         async def say(text: str, profile) -> bytes | None:
             for attempt in range(3):
+                if state["limited"] >= 3:
+                    return None  # Sarvam keeps refusing: stop warming, leave the limit to live calls
                 cached = sarvam.cached(text, profile.language_code, profile.tts_speaker) is not None
                 try:
                     wav = await sarvam.synthesize(text, language_code=profile.language_code,
                                                   speaker=profile.tts_speaker, retry_429=False)
                 except SarvamError as e:
-                    if "(429" in str(e) and attempt < 2:
-                        await asyncio.sleep(app.state.warm_backoff_s * (attempt + 1))
-                        continue
+                    if "(429" in str(e):
+                        state["limited"] += 1
+                        if attempt < 2:
+                            await asyncio.sleep(app.state.warm_backoff_s * 2 ** attempt)
+                            continue
                     return None
+                state["limited"] = 0
                 if not cached:
                     await asyncio.sleep(app.state.warm_interval_s)  # stay well under the rate limit
                 return wav
@@ -460,8 +468,9 @@ def create_app(
     # kept alive for PHONE_RECONNECT_GRACE_S so the phone can rejoin the same session; only an
     # explicit hangup (or the grace running out) ends it.
     app.state.phone_grace_s = PHONE_RECONNECT_GRACE_S
-    app.state.warm_interval_s = float(os.getenv("PAATTI_WARM_INTERVAL_S", "1.5"))
-    app.state.warm_backoff_s = 20.0
+    app.state.warm_interval_s = float(os.getenv("PAATTI_WARM_INTERVAL_S", "3"))
+    app.state.warm_backoff_s = 45.0
+    app.state.warm_all = os.getenv("PAATTI_WARM_PERSONAS", "demo") == "all"
     phone_links: dict[str, dict] = {}  # session id -> {"greeted", "gen", "end_task"}
     PHONE_FORWARD = ("turn", "notice", "ended")  # hub events the phone screen uses
 
