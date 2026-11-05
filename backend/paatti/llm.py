@@ -200,7 +200,7 @@ class GeminiBackend:
         ]
         prompt = system + (f"\n\n{note}" if note else "")
         resp = await self._generate(self.settings.gemini_models, contents, prompt, self.settings.llm_timeout_s,
-                                    max_output_tokens=300)
+                                    max_output_tokens=160)  # 1-2 spoken sentences: shorter = faster
         text = (resp.text or "").strip() if resp is not None else ""
         return text or None
 

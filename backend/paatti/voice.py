@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import wave
 import logging
 import time
 from collections import OrderedDict
@@ -19,13 +20,14 @@ from typing import Awaitable, Callable
 from .audio import VAD, pcm_from_wav, resample, wav_from_pcm
 from .personas import get_profile
 from .sarvam import SarvamClient, SarvamError
+from .speech import synth_stream
 from .service import CallService
 from .session import CallSession
 
 log = logging.getLogger(__name__)
 
 STT_RATE = 16000
-FILLER_AFTER_S = 0.6
+FILLER_AFTER_S = 0.4
 SECOND_FILLER_AFTER_S = 3.0
 
 
@@ -183,13 +185,24 @@ class VoiceCall:
             TTS_CACHE.put(key, pcm)
         return pcm
 
-    async def play(self, text: str, cache: bool = False) -> None:
-        try:
-            pcm = await self._tts(text, cache=cache)
-        except (SarvamError, ValueError) as e:
-            self.service.hub.publish(self.session.id, {"type": "notice", "message": f"voice output failed: {e}"})
-            return
-        duration = len(pcm) / 2 / self.out_rate
+    def _queue_playback(self, pcm: bytes) -> None:
         start = max(self.clock(), self.play_until)
-        self.play_until = start + duration
-        await self.send_audio(pcm)
+        self.play_until = start + len(pcm) / 2 / self.out_rate
+
+    async def play(self, text: str, cache: bool = False) -> None:
+        """Speak a line. Short cached lines (greeting, fillers) go whole; replies stream
+        sentence by sentence so the first words are heard while the rest is synthesised."""
+        try:
+            if cache:
+                pcm = await self._tts(text, cache=True)
+                self._queue_playback(pcm)
+                await self.send_audio(pcm)
+                return
+            async for _chunk, wav in synth_stream(self.sarvam, text, self.profile.language_code,
+                                                  self.profile.tts_speaker):
+                pcm, rate = pcm_from_wav(wav)
+                pcm = resample(pcm, rate, self.out_rate)
+                self._queue_playback(pcm)
+                await self.send_audio(pcm)
+        except (SarvamError, ValueError, EOFError, wave.Error) as e:
+            self.service.hub.publish(self.session.id, {"type": "notice", "message": f"voice output failed: {e}"})

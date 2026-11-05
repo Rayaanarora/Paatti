@@ -70,6 +70,9 @@ class Settings:
     tts_sample_rate: int | None = field(
         default_factory=lambda: int(v) if (v := os.getenv("SARVAM_TTS_SAMPLE_RATE", "")) else None
     )
+    audio_cache_dir: str | None = field(default_factory=lambda: os.getenv(
+        "PAATTI_AUDIO_CACHE_DIR", str(Path(__file__).parent / "data" / "audio_cache")) or None)
+    audio_cache_write: bool = field(default_factory=lambda: os.getenv("PAATTI_AUDIO_CACHE_WRITE", "1") != "0")
     tts_pace: float = field(default_factory=lambda: float(os.getenv("SARVAM_TTS_PACE", "1.2")))
 
     cors_origins: list[str] = field(

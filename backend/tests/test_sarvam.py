@@ -16,6 +16,11 @@ def make_client(handler):
     return SarvamClient(settings, http=http)
 
 
+from paatti.audio import wav_from_pcm  # noqa: E402
+
+FAKE_WAV = wav_from_pcm(b"\x00\x00" * 2205, 22050)  # 0.1 s of silence at Sarvam's 22.05 kHz
+
+
 def ok_handler(request: httpx.Request) -> httpx.Response:
     assert request.headers["api-subscription-key"] == "test-key"
     if request.url.path == "/speech-to-text":
@@ -23,7 +28,7 @@ def ok_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"transcript": "Transfer to account 3456 7890 1234"})
     body = json.loads(request.content)
     assert body["model"] == "bulbul:v3" and body["target_language_code"] == "ta-IN"
-    return httpx.Response(200, json={"audios": [base64.b64encode(b"WAVDATA").decode()]})
+    return httpx.Response(200, json={"audios": [base64.b64encode(FAKE_WAV).decode()]})
 
 
 def test_requires_key():
@@ -35,7 +40,7 @@ def test_requires_key():
 async def test_transcribe_and_synthesize():
     c = make_client(ok_handler)
     assert await c.transcribe(b"audio") == "Transfer to account 3456 7890 1234"
-    assert await c.synthesize("Aiyo kanna") == b"WAVDATA"
+    assert await c.synthesize("Aiyo kanna") == FAKE_WAV
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,7 @@ import base64
 import binascii
 import logging
 import os
+import wave
 import secrets
 import time
 from pathlib import Path
@@ -18,7 +19,8 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .audio import wav_from_pcm
+from .audio import pcm_from_wav, resample, wav_from_pcm
+from .speech import synth_stream
 from .config import Settings
 from .db import Database, DbRepeatRegistry
 from .extractor import LLMExtractor
@@ -298,9 +300,18 @@ def create_app(
 
         profile = get_profile(s.persona_key)
         try:
-            audio = await sarvam.synthesize(text, language_code=profile.language_code, speaker=profile.tts_speaker)
-            reply({"type": "paatti_audio", "format": "wav", "data": base64.b64encode(audio).decode()})
-        except SarvamError as e:
+            # Stream sentence by sentence at 16 kHz: first words arrive fast, payloads stay small.
+            seq = 0
+            async for _chunk, wav in synth_stream(sarvam, text, profile.language_code, profile.tts_speaker):
+                try:
+                    pcm, rate = pcm_from_wav(wav)
+                    out = wav_from_pcm(resample(pcm, rate, PHONE_RATE), PHONE_RATE)
+                except (EOFError, ValueError, wave.Error):
+                    out = wav  # not a WAV we can resample: forward as-is, the browser can still play it
+                reply({"type": "paatti_audio", "format": "wav", "seq": seq,
+                       "data": base64.b64encode(out).decode()})
+                seq += 1
+        except (SarvamError, ValueError) as e:
             reply({"type": "notice", "message": f"voice output unavailable: {e}"})
 
     # ---- browser phone: a mobile becomes the "scammer's phone" ----------------

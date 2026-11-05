@@ -132,7 +132,7 @@ class VAD:
         rate: int,
         frame_ms: int = 20,
         start_ms: int = 100,
-        silence_ms: int = 700,
+        silence_ms: int = 550,
         min_utterance_ms: int = 300,
         max_utterance_ms: int = 15000,
         preroll_ms: int = 200,

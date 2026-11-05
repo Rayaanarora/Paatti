@@ -58,14 +58,14 @@ async def test_dadi_profile_used_for_hindi_persona():
     await p.reply(s)
     assert "Lucknow" in b.chats[0][0]
     s2 = session_with("account 3456 7890 1234", persona="dadi")
-    assert "Sahi hai na" in await p.reply(s2)
+    assert "345678901234" in (await p.reply(s2)).replace(" ", "")
 
 
 async def test_readback_bypasses_llm():
     b = FakeBackend("should not be used")
     p = Persona(Settings(), backend=b)
     reply = await p.reply(session_with("Send to account 3456 7890 1234"))
-    assert "3-4-5-6-7-8-9-0-1-2-3-4" in reply
+    assert "345678901234" in reply.replace(" ", "")
     assert b.chats == []
 
 

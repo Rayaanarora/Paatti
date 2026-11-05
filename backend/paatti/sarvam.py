@@ -93,12 +93,9 @@ class SarvamClient:
 
     async def synthesize(self, text: str, language_code: str = "ta-IN", speaker: str | None = None) -> bytes:
         """Text-to-speech in a slow, elderly voice. Returns WAV bytes."""
-        text_clean = text.strip()
-        h = hashlib.sha256(text_clean.encode()).hexdigest()[:16]
-        cache_file = Path(__file__).parent / "data" / "audio_cache" / f"{h}.wav"
-        if cache_file.exists():
-            log.info("⚡ Audio cache HIT (0ms): %s", text_clean[:40])
-            return cache_file.read_bytes()
+        cached = self.cached(text, language_code, speaker)
+        if cached is not None:
+            return cached
 
         self._spend()
         body = {
@@ -121,9 +118,36 @@ class SarvamClient:
         if not audios:
             raise SarvamError("text-to-speech returned no audio")
         audio_bytes = base64.b64decode(audios[0])
-        try:
-            cache_file.parent.mkdir(parents=True, exist_ok=True)
-            cache_file.write_bytes(audio_bytes)
-        except Exception:
-            pass
+        self._store(text, language_code, speaker, audio_bytes)
         return audio_bytes
+
+    # ---- disk audio cache (pre-generated lines play with zero latency) -------
+    def _cache_file(self, text: str, language_code: str, speaker: str | None) -> Path | None:
+        if not self.settings.audio_cache_dir:
+            return None
+        speaker = speaker or self.settings.tts_speaker
+        text = text.strip()
+        if (language_code, speaker, self.settings.tts_pace) == ("ta-IN", "kavitha", 1.2):
+            raw = text  # legacy key: keeps the committed pre-generated Paatti lines valid
+        else:
+            raw = f"{language_code}|{speaker}|{self.settings.tts_pace}|{text}"
+        return Path(self.settings.audio_cache_dir) / f"{hashlib.sha256(raw.encode()).hexdigest()[:16]}.wav"
+
+    def cached(self, text: str, language_code: str = "ta-IN", speaker: str | None = None) -> bytes | None:
+        f = self._cache_file(text, language_code, speaker)
+        if f is not None and f.exists():
+            try:
+                return f.read_bytes()
+            except OSError:
+                return None
+        return None
+
+    def _store(self, text: str, language_code: str, speaker: str | None, audio: bytes) -> None:
+        f = self._cache_file(text, language_code, speaker)
+        if f is None or not self.settings.audio_cache_write:
+            return
+        try:
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_bytes(audio)
+        except OSError:
+            log.warning("could not write audio cache")

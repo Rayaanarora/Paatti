@@ -81,7 +81,7 @@ async def test_utterance_goes_through_stt_persona_tts():
     s, call, sent, _ = make_call(service, sarvam)
     await call.handle_utterance(tone(500))
     assert s.intel.account_number.value == "345678901234"
-    assert "3-4-5-6" in sarvam.spoken[-1]  # read-back spoken aloud
+    assert any("3456" in t.replace(" ", "") for t in sarvam.spoken)  # read-back spoken aloud
     assert sent and len(sent[-1]) == 2 * 800  # 0.1 s at 8 kHz after resampling
 
 
@@ -113,7 +113,7 @@ async def test_filler_plays_when_reply_is_slow(monkeypatch):
     sarvam = FakeSarvam(["hello madam this is the police"])
     s, call, sent, _ = make_call(service, sarvam)
     await call.handle_utterance(tone(300))
-    assert sarvam.spoken[0] in call.profile.fillers and len(sent) == 2
+    assert sarvam.spoken[0] in call.profile.fillers and len(sent) >= 2
 
 
 async def test_unclear_line_after_two_empty_transcripts():
@@ -381,4 +381,4 @@ async def test_second_filler_when_model_is_very_slow(monkeypatch):
     s, call, sent, _ = make_call(service, sarvam)
     await call.handle_utterance(tone(300))
     assert sarvam.spoken[0] in call.profile.fillers and sarvam.spoken[1] in call.profile.fillers
-    assert len(sent) == 3  # two fillers + the reply
+    assert len(sent) >= 3  # two fillers, then the reply (streamed in one or more chunks)

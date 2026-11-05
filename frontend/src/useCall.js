@@ -98,16 +98,38 @@ export function useCall() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const playWav = useCallback((b64) => {
+  // Paatti's reply arrives as several short audio chunks: schedule them back to back
+  // on one AudioContext so the first sentence plays immediately and there are no gaps.
+  const audioOut = useRef({ ctx: null, next: 0, pending: 0, sources: [] })
+  const playWav = useCallback(async (b64) => {
     if (live.current.muted) return
-    const audio = new Audio(`data:audio/wav;base64,${b64}`)
-    pauseRecognition()
-    setSpeaking(true)
-    audio.onended = audio.onerror = () => {
+    const a = audioOut.current
+    try {
+      a.ctx = a.ctx || new (window.AudioContext || window.webkitAudioContext)()
+      if (a.ctx.state === 'suspended') await a.ctx.resume()
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+      const buffer = await a.ctx.decodeAudioData(bytes.buffer)
+      const src = a.ctx.createBufferSource()
+      src.buffer = buffer
+      src.connect(a.ctx.destination)
+      const at = Math.max(a.ctx.currentTime + 0.02, a.next)
+      src.start(at)
+      a.next = at + buffer.duration
+      a.pending += 1
+      a.sources.push(src)
+      pauseRecognition()
+      setSpeaking(true)
+      src.onended = () => {
+        a.pending -= 1
+        a.sources = a.sources.filter((x) => x !== src)
+        if (a.pending <= 0) {
+          setSpeaking(false)
+          resumeRecognition()
+        }
+      }
+    } catch {
       setSpeaking(false)
-      resumeRecognition()
     }
-    audio.play().catch(() => setSpeaking(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

@@ -103,7 +103,7 @@ Channels                         Backend (FastAPI)                              
 ```
 
 ### Life of one caller turn
-1. Audio arrives as frames. VAD detects the end of speech (700 ms of silence).
+1. Audio arrives as frames. VAD detects the end of speech (550 ms of silence).
 2. Sarvam speech-to-text runs (`translit` mode returns romanised text with digits as numerals).
 3. `CallService.respond` (serialised per call with a lock):
    - **Rule extraction:** regex rules run instantly; validators and the verbatim-quote check gate them; matches are merged into the session.
@@ -115,8 +115,8 @@ Channels                         Backend (FastAPI)                              
      4. **Gemini:** a call through the pool; the reply passes the output guard.
      5. **Script:** scripted line by stage, used as the fallback.
    - **Extraction (background):** Gemini JSON extraction runs, but only on turns with digits, `@` or money words.
-4. **Filler:** if the reply isn't ready in 0.6 s, a cached filler plays ("Aiyo, oru nimisham kanna..."). If it's still pending after 3 s more, a second filler plays.
-5. **Speak:** Sarvam text-to-speech, resampled for the channel, sent back.
+4. **Filler:** if the reply isn't ready in 0.4 s, a cached filler plays ("Aiyo, oru nimisham kanna..."). If it's still pending after 3 s more, a second filler plays.
+5. **Speak (streamed):** the reply is split into sentences (`speech.py`). All sentences go to Sarvam text-to-speech at once and are sent in order as each is ready, so the first sentence plays after one short TTS round-trip while the rest is still generated. Pre-generated lines in the disk audio cache play instantly. Pace is 1.2× (natural, not slow-motion).
 6. **Persist:** everything is written through to SQLite.
 
 ---
@@ -167,7 +167,7 @@ Channels                         Backend (FastAPI)                              
 
 ### 6.5 Voice pipeline (`voice.py`, `audio.py`)
 - **Audio conversion:** pure-Python µ-law codec (Python 3.13 removed `audioop`), WAV pack/unpack, linear resampler.
-- **VAD:** energy-based with an adaptive noise floor, 20 ms frames. Speech starts after 100 ms; the utterance ends after 700 ms of silence. Minimum 300 ms, forced cut at 15 s. After a forced cut, if the audio was **flat** (steady line noise), it re-learns the noise floor and drops the clip.
+- **VAD:** energy-based with an adaptive noise floor, 20 ms frames. Speech starts after 100 ms; the utterance ends after 550 ms of silence. Minimum 300 ms, forced cut at 15 s. After a forced cut, if the audio was **flat** (steady line noise), it re-learns the noise floor and drops the clip.
 - **Turn handling:** bounded utterance queue (2), so floods are dropped. Greeting on answer; fillers pre-synthesised and cached (LRU of 128).
 - **Twilio line:** barge-in clears Paatti's audio when the caller talks over her.
 - **Browser phone:** echo guard ignores the mic while Paatti plays, plus 250 ms. The phone sends `answered` after the ringback, so the greeting lines up with the guard.
@@ -217,6 +217,7 @@ backend/
     extractor.py           LLM extraction + per-finding validation
     service.py             CallService, Hub (loop-safe fan-out), SessionStore, RateLimiter
     voice.py               VoiceCall streaming pipeline, TTS cache
+    speech.py              sentence splitter + parallel, in-order streaming text-to-speech
     audio.py               µ-law, WAV, resample, VAD
     telephony.py           Twilio webhook (signature), media stream bridge, outbound calls
     sarvam.py              Sarvam STT/TTS client (+ daily cap, error detail)
@@ -299,7 +300,7 @@ Names only; never commit values. Template: `.env.example`. **The app does not re
 | `ANTHROPIC_API_KEY`, `PAATTI_PERSONA_MODEL`, `PAATTI_EXTRACTOR_MODEL`, `PAATTI_PERSONA_EFFORT`, `PAATTI_ANTHROPIC_DAILY_CAP` | — | Optional Claude backend |
 | `SARVAM_API_KEY` | — | Needed for voice channels |
 | `SARVAM_STT_MODEL` / `SARVAM_STT_MODE` | `saaras:v3` / `translit` | Speech-to-text |
-| `SARVAM_TTS_MODEL` / `SARVAM_TTS_SPEAKER` / `SARVAM_TTS_PACE` | `bulbul:v3` / `kavitha` / 0.8 | Text-to-speech (persona voice overrides speaker) |
+| `SARVAM_TTS_MODEL` / `SARVAM_TTS_SPEAKER` / `SARVAM_TTS_PACE` | `bulbul:v3` / `kavitha` / 1.2 | Text-to-speech (persona voice overrides speaker) |
 | `SARVAM_TTS_SAMPLE_RATE`, `SARVAM_BASE_URL`, `SARVAM_DAILY_CAP` | unset / api.sarvam.ai / 2000 | |
 | `PAATTI_PERSONA` | `paatti` | Default persona (`dadi` = Hindi) |
 | `PAATTI_PUBLIC_URL` | — | Public HTTPS URL (QR codes, Twilio webhooks) |
@@ -308,6 +309,7 @@ Names only; never commit values. Template: `.env.example`. **The app does not re
 | `PAATTI_OPERATOR_TOKEN` | — | Required for outbound calls; unmasks caller IDs |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `PAATTI_OUTBOUND_ALLOWLIST` | — | Real phone line |
 | `PAATTI_DB` | `backend/data/paatti.db` | SQLite path |
+| `PAATTI_AUDIO_CACHE_DIR`, `PAATTI_AUDIO_CACHE_WRITE` | `paatti/data/audio_cache`, 1 | Disk cache of synthesised lines (pre-generated lines play instantly) |
 | `PAATTI_REPLY_CACHE`, `PAATTI_REPLY_CACHE_WRITE`, `PAATTI_REPLY_CACHE_MAX` | `paatti/data/reply_cache.json`, 1, 2000 | Set WRITE=0 on public deploys |
 | `PAATTI_SESSIONS_PER_MIN`, `PAATTI_MAX_SESSIONS`, `PAATTI_MAX_TURNS` | 30, 200, 300 | Abuse limits |
 | `VITE_API_BASE` (frontend build) | empty | Backend URL when the dashboard is hosted separately (Vercel) |

@@ -114,8 +114,8 @@ export default function PhoneApp({ sessionId: initialId }) {
     if (!window.speechSynthesis) return
     const u = new SpeechSynthesisUtterance(text)
     u.lang = lang || 'ta-IN'
-    u.rate = 0.85
-    u.pitch = 0.85
+    u.rate = 1.05  // natural speed: an elderly voice, not slow-motion
+    u.pitch = 0.9
     window.speechSynthesis.speak(u)
   }
 
