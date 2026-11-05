@@ -117,6 +117,7 @@ cd backend && pytest --cov
 cd frontend && npm test
 python evals/run_evals.py
 python evals/run_evals.py --llm --runs 3
+python evals/redteam.py
 ```
 
 `--llm` uses your Gemini key.
@@ -131,13 +132,17 @@ python evals/run_evals.py --llm --runs 3
 
 These are scripts we wrote; the live demo is the unscripted test. The `--llm` path has not been run against the real API.
 
-**Backend:** 138 tests, 95% coverage. The tests run without network access: Gemini, Sarvam and Twilio are faked.
+**Backend:** 223 tests. The tests run without network access: Gemini, Sarvam and Twilio are faked.
 
 ## Safety by design
 - **No invented identifiers:** an identifier is accepted only if its quote appears verbatim in what the caller said.
 - **No unconfirmed data in NCRP fields:** unconfirmed identifiers never reach them.
 - **Leads, not verdicts:** the report flags framing risk (a scammer could read out an innocent person's account), shows corroboration, and requires analyst review. Nothing is frozen automatically.
-- **Stays in character:** Paatti never admits being an AI or invents digits (intent replies plus output guard; tested by the adversarial evals).
+- **Can't be talked out of character:** three layers, so a scammer can't unmask her or turn her against us.
+  1. **Nothing to leak:** her instructions are written entirely in her world (a frightened grandmother on the phone). They contain no words like AI, honeypot, police or report, so even a perfect leak gives nothing away.
+  2. **Caught before the model:** prompt injection, "are you an AI?" (in 8 Indian languages), quizzes and Turing tests, and OTP requests are spotted in code. She answers with a confused, in-character line, and Gemini never sees the attack.
+  3. **Output guard:** every model reply is checked before it is spoken. Any mention of AI, models, prompts or scams, any assistant-style phrasing, links, lists, trivia answers, or digits the caller never said gets replaced with a prepared line.
+- **Red-team tested:** `python evals/redteam.py` sends 62 attacks to all 12 personas. Result: 744/744 stayed in character, 27/27 bad replies blocked, 0 false positives on normal speech. `--live 12` repeats the test against real Gemini with layer 2 switched off; see `evals/redteam/REPORT.md`.
 - **Phone line security:**
   - **Signed webhooks:** every Twilio webhook must carry a valid signature.
   - **One-time stream tokens:** each call's audio stream needs a single-use token.

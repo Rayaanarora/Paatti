@@ -27,7 +27,9 @@ log = logging.getLogger(__name__)
 # Anything a frightened grandparent would never say: admitting to being software, naming models or
 # companies, talking about prompts/instructions, assistant-style phrasing, or tipping the caller off.
 BREAKS_CHARACTER = re.compile(
-    r"\b(AI|A\.I\.|LLM|GPT)\b|artificial intelligence|language model|chat ?bot|\bbot\b|\bassistant\b|honeypot"
+    # "AI" only as the word itself: capitalised, or "an ai" / "I am ai". Lowercase "-ai" is a common Tamil
+    # suffix ("number-ai sollunga" = "say the number") and must not be blocked.
+    r"(?-i:\bA\.?I\b\.?)|(?<![-\w])(an?|as an?|i'?m|i am|is an?) ai\b|\b(LLM|GPT)\b|artificial intelligence|language model|chat ?bot|\bbot\b|\bassistant\b|honeypot"
     r"|\b(gemini|google|openai|anthropic|claude|chat ?gpt|bard|llama|mistral|deepseek)\b"
     r"|\b(prompt|prompts|system message|instructions?|programm(ed|ing)|trained|training data|my creator"
     r"|developer|operator|algorithm|dataset|neural)\b"
@@ -37,7 +39,9 @@ BREAKS_CHARACTER = re.compile(
     r"|\bi (cannot|can't|won't|am unable to|'m unable to) (help|assist|provide|share|comply|do that)\b"
     r"|i'm sorry, but|\bcertainly\b|\babsolutely\b|\bi understand your concern\b|\bhere (is|are) (the|your)\b"
     r"|\b(scam|scammer|scamming|fraud|fraudster|cheat|cheater|fake call|trap|sting|investigat|cyber ?crime"
-    r"|report (you|this)|complaint|police complaint|trace (this|your)|recording (this|the) call|recorded)\b",
+    r"|report (you|this)|complaint|police complaint|trace (this|your)|recording (this|the) call|recorded)\b"
+    # Answering a test question at all (trivia, maths) is out of character for her.
+    r"|\b(capital of|prime minister of|the answer is|equals|square root)\b",
     re.IGNORECASE,
 )
 DIGIT_RUN = re.compile(r"\d[\d ,\-]{1,}\d")

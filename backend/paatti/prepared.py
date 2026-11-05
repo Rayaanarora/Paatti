@@ -50,7 +50,13 @@ INTENT_PATTERNS: list[tuple[str, re.Pattern]] = [
         r"|\bartificial intelligence\b|\b(language model|chat ?gpt|openai|gemini|google bard)\b"
         r"|\b" + _AI_WORDS + r"\b.{0,15}\b(ho|hai|hain|hu|aa|ah|ya|kya|na|alla|aano|naki|na ki|che|cho|aahat|ahes"
         r"|aa\?|thaana|daa)\b"
-        r"|\b(nee|neenga|tum|aap|apni|tumi|meeru|neevu|ningal|tame|tusi)\b.{0,12}\b" + _AI_WORDS + r"\b",
+        r"|\b(nee|neenga|tum|aap|apni|tumi|meeru|neevu|ningal|tame|tusi)\b.{0,12}\b" + _AI_WORDS + r"\b"
+        # Unmasking attempts: "drop the act", "who are you really", "your developers are listening".
+        r"|\bdrop the act\b|\bstop (acting|pretending)\b|\bwho (are you|you are|you're) really\b"
+        r"|\bwho you really are\b|\bwhat are you really\b|\bthis is (a|just a|only a) test\b|\bnot (a )?real (grandmother|grandma|person"
+        r"|lady|woman|man)\b|\byour (developers?|programmers?|handlers?|operators?|team|makers?)\b"
+        r"|\bwho (else )?is (listening|on (this|the) (call|line)|with you)\b|\b(being monitored|monitored by"
+        r"|being recorded|recording this)\b",
         re.IGNORECASE)),
     # Tests no frightened grandmother would answer: sums, trivia, spelling, recitals, time/date.
     ("turing_test", re.compile(
@@ -162,6 +168,8 @@ def detect_intent(text: str) -> str | None:
     """Which prepared intent (if any) a caller line triggers. Normalises curly quotes/zero-width
     characters first so trivial obfuscation does not slip past."""
     text = text.replace("\u2019", "'").replace("\u200b", "").replace("\u200c", "").replace("\u200d", "")
+    text = re.sub(r"\s+", " ", text)                                   # "are   you   a   robot"
+    text = re.sub(r"\ba\s?\.\s?i\b\.?", "ai", text, flags=re.IGNORECASE)    # "A.I." / "a. i."
     for name, pattern in INTENT_PATTERNS:
         if pattern.search(text):
             return name
