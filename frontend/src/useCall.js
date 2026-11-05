@@ -12,6 +12,35 @@ function toBase64(buffer) {
   return btoa(bin)
 }
 
+/** Decode any recorded blob (WebM/Opus, MP4...) and re-encode as 16 kHz mono PCM WAV. */
+async function blobToWav(blob, rate = 16000) {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)()
+  try {
+    const decoded = await ctx.decodeAudioData(await blob.arrayBuffer())
+    const frames = Math.ceil(decoded.duration * rate)
+    const offline = new OfflineAudioContext(1, frames, rate)
+    const src = offline.createBufferSource()
+    src.buffer = decoded
+    src.connect(offline.destination)
+    src.start()
+    const pcm = (await offline.startRendering()).getChannelData(0)
+    const buf = new ArrayBuffer(44 + pcm.length * 2)
+    const v = new DataView(buf)
+    const str = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)) }
+    str(0, 'RIFF'); v.setUint32(4, 36 + pcm.length * 2, true); str(8, 'WAVE'); str(12, 'fmt ')
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true)
+    v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true)
+    str(36, 'data'); v.setUint32(40, pcm.length * 2, true)
+    for (let i = 0; i < pcm.length; i++) {
+      const x = Math.max(-1, Math.min(1, pcm[i]))
+      v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7fff, true)
+    }
+    return buf
+  } finally {
+    ctx.close()
+  }
+}
+
 function pickVoice() {
   const voices = window.speechSynthesis?.getVoices() || []
   return voices.find((v) => v.lang === 'ta-IN') || voices.find((v) => v.lang === 'en-IN') || null
@@ -210,14 +239,21 @@ export function useCall() {
     const rec = new MediaRecorder(stream.current)
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data)
     rec.onstop = async () => {
-      const blob = new Blob(chunks, { type: rec.mimeType })
-      if (blob.size) send({ type: 'audio_utterance', data: toBase64(await blob.arrayBuffer()), mime: rec.mimeType })
       stream.current?.getTracks().forEach((t) => t.stop())
+      const blob = new Blob(chunks, { type: rec.mimeType })
+      if (!blob.size) return
+      try {
+        // Sarvam is verified with WAV; browsers record WebM/MP4, so convert first.
+        const wav = await blobToWav(blob)
+        send({ type: 'audio_utterance', data: toBase64(wav), mime: 'audio/wav' })
+      } catch {
+        notice('Could not process the recording; try again or use text mode.', 'error')
+      }
     }
     rec.start()
     recorder.current = rec
     setListening(true)
-  }, [send, startMic])
+  }, [send, startMic, notice])
 
   const pttStop = useCallback(() => {
     setListening(false)

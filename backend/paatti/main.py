@@ -266,7 +266,10 @@ def create_app(
                         continue
                     s.add_audio_chunk(data)
                     try:
-                        text = await sarvam.transcribe(data, mime=str(msg.get("mime", "audio/wav"))[:40])
+                        mime = str(msg.get("mime", "audio/wav")).split(";")[0].strip()[:40] or "audio/wav"
+                        ext = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a",
+                               "audio/mpeg": "mp3"}.get(mime, "wav")
+                        text = await sarvam.transcribe(data, filename=f"turn.{ext}", mime=mime)
                     except SarvamError as e:
                         reply({"type": "notice", "message": f"speech-to-text failed: {e}; switch to text mode"})
                         continue

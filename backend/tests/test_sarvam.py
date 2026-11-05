@@ -82,3 +82,10 @@ async def test_network_errors_become_sarvam_errors():
         await c.transcribe(b"a")
     with pytest.raises(SarvamError):
         await c.synthesize("x")
+
+
+@pytest.mark.asyncio
+async def test_error_message_from_sarvam_is_surfaced():
+    c = make_client(lambda r: httpx.Response(400, json={"error": {"message": "Unsupported audio format"}}))
+    with pytest.raises(SarvamError, match="Unsupported audio format"):
+        await c.transcribe(b"a")

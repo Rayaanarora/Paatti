@@ -23,6 +23,15 @@ class SarvamError(RuntimeError):
     pass
 
 
+def _detail(resp: httpx.Response) -> str:
+    """Sarvam's own error message (no secrets), so failures are diagnosable from the UI."""
+    try:
+        msg = resp.json().get("error", {}).get("message", "")
+    except ValueError:
+        msg = ""
+    return f": {str(msg)[:160]}" if msg else ""
+
+
 class SarvamClient:
     def __init__(self, settings: Settings, http: httpx.AsyncClient | None = None):
         if not settings.sarvam_api_key:
@@ -66,7 +75,7 @@ class SarvamClient:
             raise SarvamError(f"speech-to-text unreachable ({type(e).__name__})") from e
         if resp.status_code != 200:
             log.warning("Sarvam STT HTTP %s", resp.status_code)
-            raise SarvamError(f"speech-to-text failed ({resp.status_code})")
+            raise SarvamError(f"speech-to-text failed ({resp.status_code}{_detail(resp)})")
         return str(resp.json().get("transcript", "")).strip()
 
     async def synthesize(self, text: str, language_code: str = "ta-IN", speaker: str | None = None) -> bytes:
@@ -87,7 +96,7 @@ class SarvamClient:
             raise SarvamError(f"text-to-speech unreachable ({type(e).__name__})") from e
         if resp.status_code != 200:
             log.warning("Sarvam TTS HTTP %s", resp.status_code)
-            raise SarvamError(f"text-to-speech failed ({resp.status_code})")
+            raise SarvamError(f"text-to-speech failed ({resp.status_code}{_detail(resp)})")
         audios = resp.json().get("audios") or []
         if not audios:
             raise SarvamError("text-to-speech returned no audio")
