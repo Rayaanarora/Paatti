@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 
 from .audio import pcm_from_wav, resample, wav_from_pcm
 from .speech import speak_stream
-from .config import Settings
+from .config import _env_num, Settings
 from .db import Database, DbRepeatRegistry
 from .extractor import LLMExtractor
 from .persona import Persona
@@ -493,7 +493,7 @@ def create_app(
     # kept alive for PHONE_RECONNECT_GRACE_S so the phone can rejoin the same session; only an
     # explicit hangup (or the grace running out) ends it.
     app.state.phone_grace_s = PHONE_RECONNECT_GRACE_S
-    app.state.warm_interval_s = float(os.getenv("PAATTI_WARM_INTERVAL_S", "3"))
+    app.state.warm_interval_s = _env_num("PAATTI_WARM_INTERVAL_S", "3")
     app.state.warm_backoff_s = 45.0
     app.state.warm_all = os.getenv("PAATTI_WARM_PERSONAS", "demo") == "all"
     phone_links: dict[str, dict] = {}  # session id -> {"greeted", "gen", "end_task"}

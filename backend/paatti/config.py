@@ -20,6 +20,16 @@ def _list(name: str, default: str) -> list[str]:
     return [x.strip() for x in os.getenv(name, default).split(",") if x.strip()]
 
 
+def _env_num(name: str, default: str, cast=float):
+    """Read a numeric setting; an empty or malformed value (e.g. a blank row left in the hosting
+    dashboard) falls back to the default instead of crashing the server at startup."""
+    raw = (os.getenv(name) or "").strip()
+    try:
+        return cast(raw) if raw else cast(default)
+    except ValueError:
+        return cast(default)
+
+
 # Voices bulbul:v2 had that bulbul:v3 rejects (HTTP 400). An old value left in the hosting
 # dashboard would break every default-voice request, so it falls back to a v3 voice.
 _V2_ONLY_SPEAKERS = {"anushka", "manisha", "vidya", "arya", "abhilash", "karun", "hitesh"}
@@ -37,7 +47,7 @@ class Settings:
     persona_model: str = field(default_factory=lambda: os.getenv("PAATTI_PERSONA_MODEL", "claude-opus-5-5"))
     extractor_model: str = field(default_factory=lambda: os.getenv("PAATTI_EXTRACTOR_MODEL", "claude-opus-5-5"))
     persona_effort: str = field(default_factory=lambda: os.getenv("PAATTI_PERSONA_EFFORT", "low"))
-    llm_timeout_s: float = field(default_factory=lambda: float(os.getenv("PAATTI_LLM_TIMEOUT", "12")))
+    llm_timeout_s: float = field(default_factory=lambda: _env_num("PAATTI_LLM_TIMEOUT", "12", float))
     use_llm: bool = field(default_factory=lambda: os.getenv("PAATTI_USE_LLM", "1") != "0")
     provider_override: str = field(default_factory=lambda: os.getenv("PAATTI_LLM_PROVIDER", "").lower())
 
@@ -53,9 +63,9 @@ class Settings:
         "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-lite-latest",
         "gemini-3.5-flash", "gemini-flash-latest"])))
     gemini_thinking_level: str = field(default_factory=lambda: os.getenv("PAATTI_GEMINI_THINKING_LEVEL", "minimal"))
-    gemini_attempt_timeout_s: float = field(default_factory=lambda: float(os.getenv("PAATTI_GEMINI_ATTEMPT_TIMEOUT", "7")))
-    gemini_rpm: int = field(default_factory=lambda: int(os.getenv("PAATTI_GEMINI_RPM", "8")))
-    gemini_daily_cap: int = field(default_factory=lambda: int(os.getenv("PAATTI_GEMINI_DAILY_CAP", "600")))
+    gemini_attempt_timeout_s: float = field(default_factory=lambda: _env_num("PAATTI_GEMINI_ATTEMPT_TIMEOUT", "7", float))
+    gemini_rpm: int = field(default_factory=lambda: _env_num("PAATTI_GEMINI_RPM", "8", int))
+    gemini_daily_cap: int = field(default_factory=lambda: _env_num("PAATTI_GEMINI_DAILY_CAP", "600", int))
     reply_cache_path: str = field(default_factory=lambda: os.getenv(
         "PAATTI_REPLY_CACHE", str(__import__("pathlib").Path(__file__).parent / "data" / "reply_cache.json")))
     db_path: str = field(default_factory=lambda: os.getenv(
@@ -85,16 +95,16 @@ class Settings:
     )
     # Longest pause kept inside a synthesised clip (ms). Shorter = snappier speech; 0 = off.
     # Pitch-preserving speed-up applied after synthesis (1.0 = off). 1.1-1.25 sounds natural.
-    tts_speedup: float = field(default_factory=lambda: min(1.6, max(1.0, float(os.getenv("PAATTI_TTS_SPEEDUP", "1.15")))))
-    tts_max_gap_ms: int = field(default_factory=lambda: int(os.getenv("PAATTI_TTS_MAX_GAP_MS", "120")))
+    tts_speedup: float = field(default_factory=lambda: min(1.6, max(1.0, _env_num("PAATTI_TTS_SPEEDUP", "1.15", float))))
+    tts_max_gap_ms: int = field(default_factory=lambda: _env_num("PAATTI_TTS_MAX_GAP_MS", "120", int))
     # Make her sound like she is on a real phone call: 8 kHz narrowband, phone AGC, G.711 grain and a
     # quiet room tone under her voice. Off (0) gives the clean studio voice.
     phone_line: bool = field(default_factory=lambda: os.getenv("PAATTI_PHONE_LINE", "1") != "0")
-    line_noise_db: float = field(default_factory=lambda: max(-90.0, min(-30.0, float(os.getenv("PAATTI_LINE_NOISE_DB", "-52")))))
+    line_noise_db: float = field(default_factory=lambda: max(-90.0, min(-30.0, _env_num("PAATTI_LINE_NOISE_DB", "-52", float))))
     audio_cache_dir: str | None = field(default_factory=lambda: os.getenv(
         "PAATTI_AUDIO_CACHE_DIR", str(Path(__file__).parent / "data" / "audio_cache")) or None)
     audio_cache_write: bool = field(default_factory=lambda: os.getenv("PAATTI_AUDIO_CACHE_WRITE", "1") != "0")
-    tts_pace: float = field(default_factory=lambda: min(2.0, max(0.5, float(os.getenv("SARVAM_TTS_PACE", "2.0")))))
+    tts_pace: float = field(default_factory=lambda: min(2.0, max(0.5, _env_num("SARVAM_TTS_PACE", "2.0", float))))
 
     cors_origins: list[str] = field(
         default_factory=lambda: _list("PAATTI_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
@@ -102,16 +112,16 @@ class Settings:
     # Also allow origins matching this regex (e.g. Vercel preview URLs of the dashboard).
     cors_origin_regex: str | None = field(default_factory=lambda: os.getenv("PAATTI_CORS_ORIGIN_REGEX") or None)
     max_turn_chars: int = 2000
-    max_turns_per_call: int = field(default_factory=lambda: int(os.getenv("PAATTI_MAX_TURNS", "300")))
-    sarvam_daily_cap: int = field(default_factory=lambda: int(os.getenv("SARVAM_DAILY_CAP", "2000")))
+    max_turns_per_call: int = field(default_factory=lambda: _env_num("PAATTI_MAX_TURNS", "300", int))
+    sarvam_daily_cap: int = field(default_factory=lambda: _env_num("SARVAM_DAILY_CAP", "2000", int))
     # Our own ceiling on Sarvam requests per minute, kept under the account's rate limit so requests
     # wait a moment instead of failing with 429. Live calls may use all of it; warm-up only half.
-    sarvam_rpm: int = field(default_factory=lambda: max(2, int(os.getenv("PAATTI_SARVAM_RPM", "20"))))
-    anthropic_daily_cap: int = field(default_factory=lambda: int(os.getenv("PAATTI_ANTHROPIC_DAILY_CAP", "400")))
-    reply_cache_max: int = field(default_factory=lambda: int(os.getenv("PAATTI_REPLY_CACHE_MAX", "2000")))
+    sarvam_rpm: int = field(default_factory=lambda: max(2, _env_num("PAATTI_SARVAM_RPM", "20", int)))
+    anthropic_daily_cap: int = field(default_factory=lambda: _env_num("PAATTI_ANTHROPIC_DAILY_CAP", "400", int))
+    reply_cache_max: int = field(default_factory=lambda: _env_num("PAATTI_REPLY_CACHE_MAX", "2000", int))
     max_audio_bytes: int = 5 * 1024 * 1024
-    max_sessions: int = field(default_factory=lambda: int(os.getenv("PAATTI_MAX_SESSIONS", "200")))
-    sessions_per_minute: int = field(default_factory=lambda: int(os.getenv("PAATTI_SESSIONS_PER_MIN", "30")))
+    max_sessions: int = field(default_factory=lambda: _env_num("PAATTI_MAX_SESSIONS", "200", int))
+    sessions_per_minute: int = field(default_factory=lambda: _env_num("PAATTI_SESSIONS_PER_MIN", "30", int))
 
     @property
     def llm_provider(self) -> str:

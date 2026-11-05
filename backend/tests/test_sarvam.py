@@ -248,3 +248,12 @@ async def test_throttle_keeps_requests_under_our_per_minute_cap(monkeypatch):
     await c.synthesize("line 5")
     assert slept                                         # over the cap: waits instead of a 429
     assert c.status()["per_minute_cap"] == 4
+
+
+def test_blank_numeric_settings_fall_back_instead_of_crashing(monkeypatch):
+    for name in ("SARVAM_TTS_PACE", "PAATTI_TTS_SPEEDUP", "PAATTI_SARVAM_RPM", "SARVAM_DAILY_CAP", "PAATTI_LINE_NOISE_DB"):
+        monkeypatch.setenv(name, "")
+    s = Settings()
+    assert s.tts_pace == 2.0 and s.sarvam_rpm == 20 and s.sarvam_daily_cap == 2000
+    monkeypatch.setenv("SARVAM_TTS_PACE", "fast")
+    assert Settings().tts_pace == 2.0
