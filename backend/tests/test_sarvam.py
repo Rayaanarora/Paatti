@@ -134,3 +134,17 @@ async def test_unknown_persona_voice_falls_back_to_default_speaker():
         base_url="https://s.test", transport=httpx.MockTransport(lambda r: httpx.Response(400, json={}))))
     with pytest.raises(SarvamError):  # the default voice itself failing is still an error
         await failing.synthesize("x", speaker="kavitha")
+
+
+@pytest.mark.asyncio
+async def test_synthesized_audio_has_long_pauses_removed():
+    from paatti.audio import pcm_from_wav, wav_from_pcm
+    import math, struct
+
+    rate = 22050
+    tone = struct.pack(f"<{rate // 2}h", *(int(8000 * math.sin(2 * math.pi * 300 * i / rate)) for i in range(rate // 2)))
+    gap = b"\x00\x00" * rate  # 1 s pause
+    slow = wav_from_pcm(tone + gap + tone, rate)
+    c = make_client(lambda r: httpx.Response(200, json={"audios": [base64.b64encode(slow).decode()]}))
+    pcm, out_rate = pcm_from_wav(await c.synthesize("Aiyo kanna, oru nimisham"))
+    assert out_rate == rate and len(pcm) / 2 / rate < 1.3  # 2.0 s -> ~1.1 s

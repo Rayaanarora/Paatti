@@ -86,7 +86,7 @@ export function useCall() {
     const voice = pickVoice()
     if (voice) u.voice = voice
     u.lang = voice?.lang || 'en-IN'
-    u.rate = 1.25
+    u.rate = 1.35
     u.pitch = 0.85
     pauseRecognition()
     setSpeaking(true)

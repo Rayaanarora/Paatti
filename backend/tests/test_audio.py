@@ -128,3 +128,24 @@ def test_vad_reset_drops_partial():
     for chunk in frames_of(silence(1000), 8000, 20):
         events += vad.feed(chunk)
     assert events == []
+
+
+def test_compress_silence_shortens_long_pauses_keeps_speech():
+    from paatti.audio import compress_silence
+
+    rate = 22050
+    pcm = silence(400, rate) + tone(500, rate) + silence(900, rate) + tone(500, rate) + silence(600, rate)
+    out = compress_silence(pcm, rate, max_gap_ms=120, edge_ms=40)
+    seconds = len(out) / 2 / rate
+    # 1.0 s of speech kept; 1.9 s of silence squeezed to ~0.2 s
+    assert 1.0 <= seconds <= 1.3
+    assert rms(out) > rms(pcm)  # denser speech
+
+
+def test_compress_silence_noop_for_speech_only_and_disabled():
+    from paatti.audio import compress_silence
+
+    pcm = tone(600, 16000)
+    assert abs(len(compress_silence(pcm, 16000)) - len(pcm)) <= 2 * 16000 * 0.08
+    assert compress_silence(silence(300, 16000) + pcm, 16000, max_gap_ms=0) == silence(300, 16000) + pcm
+    assert compress_silence(b"", 16000) == b""

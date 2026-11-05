@@ -9,6 +9,7 @@ the browser's built-in speech APIs handle the voice loop.
 from __future__ import annotations
 
 import base64
+import wave
 import hashlib
 import logging
 import time
@@ -17,6 +18,7 @@ from pathlib import Path
 import httpx
 
 from .config import Settings
+from .audio import compress_silence, pcm_from_wav, wav_from_pcm
 from .speech import normalize_for_tts
 
 log = logging.getLogger(__name__)
@@ -124,9 +126,20 @@ class SarvamClient:
         audios = resp.json().get("audios") or []
         if not audios:
             raise SarvamError("text-to-speech returned no audio")
-        audio_bytes = base64.b64decode(audios[0])
+        audio_bytes = self._tighten(base64.b64decode(audios[0]))
         self._store(text, language_code, speaker, audio_bytes)
         return audio_bytes
+
+    def _tighten(self, wav: bytes) -> bytes:
+        """Cut long pauses out of the clip (pace is already at Sarvam's max): faster-sounding
+        speech with the same words, speed and pitch. Falls back to the original on any issue."""
+        if self.settings.tts_max_gap_ms <= 0:
+            return wav
+        try:
+            pcm, rate = pcm_from_wav(wav)
+            return wav_from_pcm(compress_silence(pcm, rate, max_gap_ms=self.settings.tts_max_gap_ms), rate)
+        except (EOFError, ValueError, wave.Error):
+            return wav
 
     # ---- disk audio cache (pre-generated lines play with zero latency) -------
     def _cache_file(self, text: str, language_code: str, speaker: str | None) -> Path | None:
@@ -134,7 +147,8 @@ class SarvamClient:
             return None
         speaker = speaker or self.settings.tts_speaker
         text = text.strip()
-        raw = f"{language_code}|{speaker}|{self.settings.tts_pace}|{normalize_for_tts(text)}"
+        raw = (f"{language_code}|{speaker}|{self.settings.tts_pace}|gap{self.settings.tts_max_gap_ms}|"
+               f"{normalize_for_tts(text)}")
         return Path(self.settings.audio_cache_dir) / f"{hashlib.sha256(raw.encode()).hexdigest()[:16]}.wav"
 
     def cached(self, text: str, language_code: str = "ta-IN", speaker: str | None = None) -> bytes | None:

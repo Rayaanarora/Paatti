@@ -220,3 +220,47 @@ class VAD:
                     enough = False
             return [("utterance", pcm)] if enough else []
         return []
+
+
+def compress_silence(pcm: bytes, rate: int, max_gap_ms: int = 120, edge_ms: int = 40,
+                     frame_ms: int = 10) -> bytes:
+    """Shorten long pauses in synthesised speech without touching the words.
+
+    TTS voices (especially slow, elderly ones) leave long gaps at commas and full stops,
+    which makes a reply feel slow even at maximum pace. Every silent stretch longer than
+    `max_gap_ms` is cut down to `max_gap_ms` (half kept on each side, so word endings and
+    onsets are untouched); leading/trailing silence is trimmed to `edge_ms`. Pitch and
+    speaking rate are unchanged. max_gap_ms=0 disables it.
+    """
+    if not pcm or max_gap_ms <= 0:
+        return pcm
+    frame = max(1, rate * frame_ms // 1000) * 2
+    frames = [pcm[i:i + frame] for i in range(0, len(pcm), frame)]
+    levels = [rms(f) for f in frames]
+    peak = max(levels) if levels else 0.0
+    if peak <= 0:
+        return pcm
+    threshold = max(150.0, peak * 0.04)
+    silent = [lv < threshold for lv in levels]
+    keep_gap = max(1, max_gap_ms // frame_ms)
+    keep_edge = max(0, edge_ms // frame_ms)
+    out: list[bytes] = []
+    i, n = 0, len(frames)
+    while i < n:
+        if not silent[i]:
+            out.append(frames[i])
+            i += 1
+            continue
+        j = i
+        while j < n and silent[j]:
+            j += 1
+        run = frames[i:j]
+        if i == 0 or j == n:  # leading or trailing silence
+            out.extend(run[:keep_edge] if j == n else run[len(run) - keep_edge:] if keep_edge else [])
+        elif len(run) > keep_gap:
+            half = keep_gap // 2
+            out.extend(run[:half] + run[len(run) - (keep_gap - half):])
+        else:
+            out.extend(run)
+        i = j
+    return b"".join(out)

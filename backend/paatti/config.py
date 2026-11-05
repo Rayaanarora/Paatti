@@ -72,6 +72,8 @@ class Settings:
     tts_sample_rate: int | None = field(
         default_factory=lambda: int(v) if (v := os.getenv("SARVAM_TTS_SAMPLE_RATE", "")) else None
     )
+    # Longest pause kept inside a synthesised clip (ms). Shorter = snappier speech; 0 = off.
+    tts_max_gap_ms: int = field(default_factory=lambda: int(os.getenv("PAATTI_TTS_MAX_GAP_MS", "120")))
     audio_cache_dir: str | None = field(default_factory=lambda: os.getenv(
         "PAATTI_AUDIO_CACHE_DIR", str(Path(__file__).parent / "data" / "audio_cache")) or None)
     audio_cache_write: bool = field(default_factory=lambda: os.getenv("PAATTI_AUDIO_CACHE_WRITE", "1") != "0")

@@ -253,7 +253,7 @@ export default function PhoneApp({ sessionId: initialId }) {
     setPaattiSpeaking(true)
     const u = new SpeechSynthesisUtterance(text)
     u.lang = lang || 'ta-IN'
-    u.rate = 1.05
+    u.rate = 1.3
     u.pitch = 0.9
     u.onend = u.onerror = () => setPaattiSpeaking(false)
     window.speechSynthesis.speak(u)
