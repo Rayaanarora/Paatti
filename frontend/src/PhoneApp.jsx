@@ -90,6 +90,8 @@ export default function PhoneApp({ sessionId: initialId }) {
   const [voice, setVoice] = useState(true)
   const [draft, setDraft] = useState('')
   const [persona, setPersona] = useState('paatti')
+  const [subtitle, setSubtitle] = useState('')
+  const [paattiSpeaking, setPaattiSpeaking] = useState(false)
   const usedInitial = useRef(false)
   const refs = useRef({ ctx: null, ws: null, stream: null, node: null, sources: [], next: 0, stopRing: null, buf: [], bufLen: 0, muted: false, voice: true, rec: null })
   refs.current.muted = muted
@@ -105,21 +107,51 @@ export default function PhoneApp({ sessionId: initialId }) {
   // Strictly in arrival order: async decoding must not reorder filler and reply chunks.
   const playChain = useRef(Promise.resolve())
   const playWav = (b64) => {
-    playChain.current = playChain.current.then(() => scheduleWav(b64)).catch(() => {})
+    setPaattiSpeaking(true)
+    playChain.current = playChain.current.then(() => scheduleWav(b64)).catch(() => {
+      setPaattiSpeaking(false)
+    })
   }
 
   const scheduleWav = async (b64) => {
     const r = refs.current
-    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
-    const buffer = await r.ctx.decodeAudioData(bytes.buffer)
-    const src = r.ctx.createBufferSource()
-    src.buffer = buffer
-    src.connect(r.ctx.destination)
-    const at = Math.max(r.ctx.currentTime, r.next)
-    src.start(at)
-    r.next = at + buffer.duration
-    r.sources.push(src)
-    src.onended = () => { r.sources = r.sources.filter((s) => s !== src) }
+    if (!r.ctx) return
+    if (r.ctx.state === 'suspended') {
+      try { await r.ctx.resume() } catch {}
+    }
+    const raw = atob(b64)
+    const bytes = new Uint8Array(raw.length)
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i)
+
+    // Method 1: Web Audio Context (resilient clone)
+    try {
+      const buffer = await r.ctx.decodeAudioData(bytes.buffer.slice(0))
+      const src = r.ctx.createBufferSource()
+      src.buffer = buffer
+      src.connect(r.ctx.destination)
+      const at = Math.max(r.ctx.currentTime, r.next)
+      src.start(at)
+      r.next = at + buffer.duration
+      r.sources.push(src)
+      src.onended = () => {
+        r.sources = r.sources.filter((s) => s !== src)
+        if (r.sources.length === 0) setPaattiSpeaking(false)
+      }
+      return
+    } catch {
+      // Fall through to HTML5 Audio fallback
+    }
+
+    // Method 2: HTML5 Audio fallback for mobile phones where Web Audio is muted/blocked
+    try {
+      const blob = new Blob([bytes], { type: 'audio/wav' })
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audio.onended = () => setPaattiSpeaking(false)
+      await audio.play()
+    } catch {
+      setPaattiSpeaking(false)
+    }
   }
 
   const clearAudio = () => {
@@ -127,14 +159,21 @@ export default function PhoneApp({ sessionId: initialId }) {
     r.sources.forEach((s) => { try { s.stop() } catch { /* ended */ } })
     r.sources = []
     r.next = 0
+    setPaattiSpeaking(false)
   }
 
   const speakText = (text, lang) => {
-    if (!window.speechSynthesis) return
+    setSubtitle(text)
+    setPaattiSpeaking(true)
+    if (!window.speechSynthesis) {
+      setTimeout(() => setPaattiSpeaking(false), 2500)
+      return
+    }
     const u = new SpeechSynthesisUtterance(text)
     u.lang = lang || 'ta-IN'
-    u.rate = 1.05  // natural speed: an elderly voice, not slow-motion
+    u.rate = 1.05
     u.pitch = 0.9
+    u.onend = u.onerror = () => setPaattiSpeaking(false)
     window.speechSynthesis.speak(u)
   }
 
@@ -208,9 +247,21 @@ export default function PhoneApp({ sessionId: initialId }) {
         setTimeout(answer, Math.max(0, ringUntil - Date.now()))
         if (msg.voice) startStreaming()
         else startRecognition()
-      } else if (msg.type === 'audio') whenAnswered(() => playWav(msg.data))
-      else if (msg.type === 'clear') clearAudio()
-      else if (msg.type === 'paatti_text') whenAnswered(() => speakText(msg.text, msg.lang))
+      } else if (msg.type === 'audio') {
+        whenAnswered(() => playWav(msg.data))
+      } else if (msg.type === 'clear') {
+        clearAudio()
+      } else if (msg.type === 'paatti_text') {
+        whenAnswered(() => {
+          setSubtitle(msg.text)
+          speakText(msg.text, msg.lang)
+        })
+      } else if (msg.type === 'turn') {
+        if (msg.turn.role === 'paatti') {
+          setSubtitle(msg.turn.text)
+          setPaattiSpeaking(true)
+        }
+      }
     }
     ws.onclose = () => { if (refs.current.ws === ws) end() }
     ws.onerror = () => { setError('Call dropped.'); }
@@ -344,13 +395,35 @@ export default function PhoneApp({ sessionId: initialId }) {
         </p>
 
         {phase === 'connected' && (
-          <div className="live-mic-banner">
-            <span className="mic-dot"></span>
-            <div className="mic-banner-text">
-              <strong>MIC IS LIVE</strong>
-              <span>Speak normally into phone mic (no buttons needed)</span>
-            </div>
-          </div>
+          <>
+            {paattiSpeaking ? (
+              <div className="turn-indicator speaking">
+                <span className="speaker-wave-pulse">🔊</span>
+                <div className="turn-text">
+                  <strong>PAATTI IS SPEAKING...</strong>
+                  <span>Please listen to her response</span>
+                </div>
+              </div>
+            ) : (
+              <div className="turn-indicator your-turn">
+                <span className="mic-dot pulse"></span>
+                <div className="turn-text">
+                  <strong>YOUR TURN TO SPEAK NOW!</strong>
+                  <span>Read highlighted Beat {activeStep || 1} into mic, or tap card</span>
+                </div>
+              </div>
+            )}
+
+            {subtitle && (
+              <div className={`live-speech-bubble ${paattiSpeaking ? 'active' : 'idle'}`}>
+                <div className="speech-bubble-header">
+                  <span className="bubble-speaker">👵 Kamala Paatti:</span>
+                  {paattiSpeaking && <span className="bubble-live-tag">Speaking now</span>}
+                </div>
+                <p className="speech-bubble-content">"{subtitle}"</p>
+              </div>
+            )}
+          </>
         )}
         {error && <p className="phone-error">{error}</p>}
       </div>

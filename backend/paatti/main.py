@@ -398,7 +398,23 @@ def create_app(
 
         async def send(msg: dict) -> None:
             async with send_lock:
-                await ws.send_json(msg)
+                try:
+                    await ws.send_json(msg)
+                except Exception:
+                    pass
+
+        # Subscribe phone to the same session hub as the laptop so turns & states sync both ways
+        q = hub.subscribe(s.id)
+
+        async def pump() -> None:
+            try:
+                while True:
+                    event = await q.get()
+                    await send(event)
+            except asyncio.CancelledError:
+                pass
+
+        pump_task = asyncio.create_task(pump())
 
         async def send_audio(pcm: bytes) -> None:
             await send({"type": "audio", "format": "wav",
@@ -462,6 +478,8 @@ def create_app(
         except WebSocketDisconnect:
             pass
         finally:
+            pump_task.cancel()
+            hub.unsubscribe(s.id, q)
             if call:
                 await call.close()
             service.end(s)
