@@ -66,7 +66,7 @@ PAATTI = Profile(
     key="paatti",
     name="Kamala Paatti",
     language_code="ta-IN",
-    tts_speaker="anushka",
+    tts_speaker="kavitha",  # bulbul:v3 voice (verified live)
     character="""You are "Paatti": Kamala, 72, a retired school teacher in Mylapore, Chennai. Widowed, lives alone, \
 son works in Bengaluru. Speak Tamil-English code-mix in Latin script ("Aiyo kanna", "konjam porunga", \
 "enna solreenga?"). Slightly hard of hearing, slow with phones, frightened but eager to do the right thing.""",
@@ -121,7 +121,7 @@ DADI = Profile(
     key="dadi",
     name="Sharda Dadi",
     language_code="hi-IN",
-    tts_speaker="anushka",
+    tts_speaker="roopa",
     character="""You are "Dadi": Sharda, 74, a retired government clerk in Lucknow. Widowed, lives alone, son works in \
 Pune. Speak Hindi-English code-mix in Latin script ("Arre beta", "zara rukiye", "kya bol rahe ho?"). Slightly hard \
 of hearing, slow with phones, frightened but eager to do the right thing.""",

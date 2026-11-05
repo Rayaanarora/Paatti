@@ -40,6 +40,14 @@ class SarvamClient:
             raise SarvamError("daily Sarvam cap reached")
         self.calls_today += 1
 
+    def _stt_fields(self) -> dict[str, str]:
+        # "translit" returns romanised text with spoken digits as numerals (verified live), which
+        # the instant rule extractor can read; native script would only reach the LLM extractor.
+        fields = {"model": self.settings.stt_model, "language_code": "unknown"}
+        if self.settings.stt_mode:
+            fields["mode"] = self.settings.stt_mode
+        return fields
+
     @property
     def _headers(self) -> dict[str, str]:
         return {"api-subscription-key": self.settings.sarvam_api_key or ""}
@@ -52,7 +60,7 @@ class SarvamClient:
                 "/speech-to-text",
                 headers=self._headers,
                 files={"file": (filename, audio, mime)},
-                data={"model": self.settings.stt_model, "language_code": "unknown"},
+                data=self._stt_fields(),
             )
         except httpx.HTTPError as e:  # network trouble must surface as SarvamError, never kill a call
             raise SarvamError(f"speech-to-text unreachable ({type(e).__name__})") from e

@@ -53,8 +53,9 @@ class Settings:
     sarvam_api_key: str | None = field(default_factory=lambda: os.getenv("SARVAM_API_KEY") or None)
     sarvam_base_url: str = field(default_factory=lambda: os.getenv("SARVAM_BASE_URL", "https://api.sarvam.ai"))
     stt_model: str = field(default_factory=lambda: os.getenv("SARVAM_STT_MODEL", "saaras:v3"))
+    stt_mode: str = field(default_factory=lambda: os.getenv("SARVAM_STT_MODE", "translit"))
     tts_model: str = field(default_factory=lambda: os.getenv("SARVAM_TTS_MODEL", "bulbul:v3"))
-    tts_speaker: str = field(default_factory=lambda: os.getenv("SARVAM_TTS_SPEAKER", "anushka"))
+    tts_speaker: str = field(default_factory=lambda: os.getenv("SARVAM_TTS_SPEAKER", "kavitha"))
     # Optional: ask Sarvam for a specific output rate (e.g. 8000 for phone). Unset = provider default.
     tts_sample_rate: int | None = field(
         default_factory=lambda: int(v) if (v := os.getenv("SARVAM_TTS_SAMPLE_RATE", "")) else None

@@ -72,6 +72,15 @@ docker build -t paatti .
 docker run -p 8000:8000 -e GEMINI_API_KEY=your-key paatti
 ```
 
+## D. Vercel (what's live now)
+
+Vercel Functions can't hold Paatti's live call state across instances, so the full app runs in a **Vercel Sandbox** (one long-lived server: API + dashboard + WebSockets + SQLite) in Mumbai (`bom1`). The project's production domain redirects to it.
+
+- **Stable link:** https://paatti.vercel.app → redirects (307) to the sandbox URL
+- **Sandbox URL:** shown by `GET /api/health` → `public_url`
+- **Limit:** the Hobby plan stops a sandbox session after **45 minutes**. Restart it before each round; installed code is kept in the sandbox snapshot. If the sandbox URL changes, redeploy the redirect in the `paatti` project with the new URL.
+- **Keys:** passed as process environment variables when the server starts, never stored in the repo.
+
 ## C. Laptop only
 Same as A without the tunnel. Open http://localhost:8000. Text mode and laptop-mic browser voice work; the phone QR needs HTTPS (option A or B).
 

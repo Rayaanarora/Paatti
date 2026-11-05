@@ -19,7 +19,7 @@ def make_client(handler):
 def ok_handler(request: httpx.Request) -> httpx.Response:
     assert request.headers["api-subscription-key"] == "test-key"
     if request.url.path == "/speech-to-text":
-        assert b"saaras:v3" in request.content
+        assert b"saaras:v3" in request.content and b"translit" in request.content
         return httpx.Response(200, json={"transcript": "Transfer to account 3456 7890 1234"})
     body = json.loads(request.content)
     assert body["model"] == "bulbul:v3" and body["target_language_code"] == "ta-IN"
