@@ -184,3 +184,23 @@ def test_health_names_the_exhausted_key(monkeypatch):
     app = create_app(Settings(sarvam_api_key="k"))
     c = TestClient(app)
     assert c.get("/api/health").json()["quota"] == []
+
+
+async def test_live_reply_retries_once_after_a_429():
+    hits = []
+
+    def handler(r):
+        hits.append(1)
+        if len(hits) == 1:
+            return httpx.Response(429, headers={"retry-after": "0"}, json={"error": {"message": "rate limited"}})
+        return httpx.Response(200, json={"audios": [base64.b64encode(FAKE_WAV).decode()]})
+
+    c = make_client(handler)
+    assert await c.synthesize("Hello kanna") == FAKE_WAV and len(hits) == 2
+
+
+async def test_warmup_call_does_not_retry_and_keeps_sarvams_message():
+    c = make_client(lambda r: httpx.Response(429, json={"error": {"message": "Rate limit exceeded"}}))
+    with pytest.raises(SarvamError):
+        await c.synthesize("Hello kanna", retry_429=False)
+    assert c.status()["last_error"]["detail"] == "Rate limit exceeded"

@@ -41,7 +41,10 @@ class FakeSarvam:
     async def transcribe(self, audio, filename="turn.wav", mime="audio/wav"):
         return self.transcripts.pop(0) if self.transcripts else ""
 
-    async def synthesize(self, text, language_code="ta-IN", speaker=None):
+    def cached(self, text, language_code="ta-IN", speaker=None):
+        return None
+
+    async def synthesize(self, text, language_code="ta-IN", speaker=None, retry_429=True):
         if self.fail_tts:
             raise SarvamError("tts down")
         self.spoken.append(text)

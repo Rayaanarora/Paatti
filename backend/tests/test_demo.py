@@ -60,6 +60,7 @@ def test_startup_prewarms_every_demo_line(monkeypatch):
     from tests.test_phone import FakeSarvam
 
     monkeypatch.setenv("PAATTI_DEMO_MODE", "1")
+    monkeypatch.setenv("PAATTI_WARM_INTERVAL_S", "0")
     sarvam = FakeSarvam()
     with TestClient(create_app(Settings(), sarvam=sarvam)):
         for _ in range(100):
@@ -98,3 +99,38 @@ def test_end_summary_lists_what_the_scammer_gave_away(monkeypatch):
     assert s["confirmed_count"] == 3 and s["scammer_turns"] == len(CALLER_LINES)
     fields = {x["field"]: x for x in s["captured"]}
     assert fields["account_number"]["confirmed"] and fields["amount"]["confirmed"] is None
+
+
+def test_prewarm_records_demo_personas_first_and_backs_off_on_429(monkeypatch):
+    import time
+
+    from paatti.personas import PROFILES
+    from paatti.sarvam import SarvamError
+    from paatti.speech import split_for_tts
+    from tests.test_phone import FakeSarvam
+
+    class RateLimited(FakeSarvam):
+        def __init__(self):
+            super().__init__()
+            self.calls, self.failed = 0, None
+
+        async def synthesize(self, text, language_code="ta-IN", speaker=None, retry_429=True):
+            self.calls += 1
+            if self.calls == 2:  # one 429 mid-warm-up: retried after a back-off, not dropped
+                self.failed = text
+                raise SarvamError("text-to-speech failed (429: rate limited)")
+            return await super().synthesize(text, language_code, speaker)
+
+    monkeypatch.setenv("PAATTI_DEMO_MODE", "1")
+    monkeypatch.setenv("PAATTI_WARM_INTERVAL_S", "0")
+    sarvam = RateLimited()
+    app = create_app(Settings(), sarvam=sarvam)
+    app.state.warm_backoff_s = 0.01
+    with TestClient(app):
+        for _ in range(200):
+            if len(sarvam.spoken) >= 30:
+                break
+            time.sleep(0.02)
+    greeting = split_for_tts(PROFILES["paatti"].greeting)
+    assert sarvam.spoken[: len(greeting)] == greeting                 # the demo persona goes first
+    assert sarvam.failed in sarvam.spoken                              # the 429'd clip was retried

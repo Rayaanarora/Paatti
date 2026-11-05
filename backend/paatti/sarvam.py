@@ -8,6 +8,7 @@ the browser's built-in speech APIs handle the voice loop.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import wave
 import hashlib
@@ -47,8 +48,8 @@ class SarvamClient:
         self.last_error: dict | None = None  # {"status", "at", "what"}: surfaced in /api/health
         self.http = http or httpx.AsyncClient(base_url=settings.sarvam_base_url, timeout=15)
 
-    def _note(self, status: int, what: str) -> None:
-        self.last_error = {"status": status, "at": time.time(), "what": what}
+    def _note(self, status: int, what: str, detail: str = "") -> None:
+        self.last_error = {"status": status, "at": time.time(), "what": what, "detail": detail.lstrip(": ")}
 
     def status(self) -> dict:
         return {"calls_today": self.calls_today, "daily_cap": self.settings.sarvam_daily_cap,
@@ -98,12 +99,13 @@ class SarvamClient:
         except httpx.HTTPError as e:  # network trouble must surface as SarvamError, never kill a call
             raise SarvamError(f"speech-to-text unreachable ({type(e).__name__})") from e
         if resp.status_code != 200:
-            self._note(resp.status_code, "speech-to-text")
+            self._note(resp.status_code, "speech-to-text", _detail(resp))
             log.warning("Sarvam STT HTTP %s: %s", resp.status_code, resp.text)
             raise SarvamError(f"speech-to-text failed ({resp.status_code}{_detail(resp)})")
         return str(resp.json().get("transcript", "")).strip()
 
-    async def synthesize(self, text: str, language_code: str = "ta-IN", speaker: str | None = None) -> bytes:
+    async def synthesize(self, text: str, language_code: str = "ta-IN", speaker: str | None = None,
+                         retry_429: bool = True) -> bytes:
         """Text-to-speech in a slow, elderly voice. Returns WAV bytes."""
         text = normalize_for_tts(text)  # '...' -> short pause: natural pacing
         cached = self.cached(text, language_code, speaker)
@@ -129,9 +131,17 @@ class SarvamClient:
             # A persona voice the account/model doesn't offer: speak with the default voice rather than go silent.
             log.warning("Sarvam rejected speaker %r (HTTP %s); using %r", speaker, resp.status_code, fallback)
             return await self.synthesize(text, language_code=language_code, speaker=fallback)
+        if resp.status_code == 429 and retry_429:
+            # A live reply: one quick retry rides out a short rate-limit blip.
+            try:
+                wait = min(2.0, max(0.3, float(resp.headers.get("retry-after", "0.8"))))
+            except ValueError:
+                wait = 0.8
+            await asyncio.sleep(wait)
+            return await self.synthesize(text, language_code=language_code, speaker=speaker, retry_429=False)
         if resp.status_code != 200:
-            self._note(resp.status_code, "text-to-speech")
-            log.warning("Sarvam TTS HTTP %s", resp.status_code)
+            self._note(resp.status_code, "text-to-speech", _detail(resp))
+            log.warning("Sarvam TTS HTTP %s%s", resp.status_code, _detail(resp))
             raise SarvamError(f"text-to-speech failed ({resp.status_code}{_detail(resp)})")
         audios = resp.json().get("audios") or []
         if not audios:

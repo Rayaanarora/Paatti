@@ -153,7 +153,8 @@ def create_app(
             if err and time.time() - err["at"] < 900:
                 hint = {401: "key invalid", 403: "key invalid or out of credits", 402: "out of credits",
                         429: "rate limit or credits used up"}.get(err["status"], "service error")
-                out.append(f"Sarvam: {err['what']} failed with HTTP {err['status']} ({hint}) in the last 15 minutes. "
+                said = f' Sarvam says: "{err["detail"]}".' if err.get("detail") else ""
+                out.append(f"Sarvam: {err['what']} failed with HTTP {err['status']} ({hint}) in the last 15 minutes.{said} "
                            "Check credits at dashboard.sarvam.ai.")
         return out
 
@@ -361,36 +362,55 @@ def create_app(
             reply({"type": "paatti_audio", "format": "wav", "filler": True, "data": wavs[i % len(wavs)]})
 
     async def warm_fillers() -> None:
-        """Pre-synthesise fillers (as 16 kHz WAV for the dashboard) and every demo-script line,
-        read-back and greeting into the disk cache, so the rehearsed demo plays instantly."""
+        """Pre-synthesise the rehearsed demo (greeting, script lines, read-backs, fillers) into the
+        disk cache so it plays instantly. Demo personas go first. Requests are paced, and a 429 backs
+        off instead of hammering Sarvam: a burst at startup would trip its rate limit and make live
+        replies fail too (the free Render disk is wiped on every deploy, so this runs each time)."""
         from .demo import DEMO_ACCOUNT, DEMO_IFSC, DEMO_UPI, all_scripted_replies
         from .personas import PROFILES as _P
         from .speech import split_for_tts
 
         scripted = all_scripted_replies() if settings.demo_mode else {}
-        for key, profile in _P.items():
-            out = []
-            for line in profile.fillers:
+        first = [k for k in dict.fromkeys([settings.persona_key, "paatti", "dadi"]) if k in _P]
+        order = first + [k for k in _P if k not in first]
+
+        async def say(text: str, profile) -> bytes | None:
+            for attempt in range(3):
+                cached = sarvam.cached(text, profile.language_code, profile.tts_speaker) is not None
                 try:
-                    wav = await sarvam.synthesize(line, language_code=profile.language_code,
-                                                  speaker=profile.tts_speaker)
-                    pcm, rate = pcm_from_wav(wav)
-                    out.append(base64.b64encode(wav_from_pcm(resample(pcm, rate, PHONE_RATE), PHONE_RATE)).decode())
-                except (SarvamError, EOFError, ValueError, wave.Error):
-                    continue
-            if out:
-                filler_wavs[key] = out
+                    wav = await sarvam.synthesize(text, language_code=profile.language_code,
+                                                  speaker=profile.tts_speaker, retry_429=False)
+                except SarvamError as e:
+                    if "(429" in str(e) and attempt < 2:
+                        await asyncio.sleep(app.state.warm_backoff_s * (attempt + 1))
+                        continue
+                    return None
+                if not cached:
+                    await asyncio.sleep(app.state.warm_interval_s)  # stay well under the rate limit
+                return wav
+            return None
+
+        for key in order:
+            profile = _P[key]
             lines = [profile.greeting, *scripted.get(key, [])]
             if key in scripted:
                 lines += [profile.readback_line("account_number", DEMO_ACCOUNT.replace(" ", "")),
                           profile.readback_line("ifsc", DEMO_IFSC), profile.readback_line("upi_id", DEMO_UPI)]
             for line in lines:
                 for chunk in split_for_tts(line):  # the exact chunks speak_stream will request
-                    try:
-                        await sarvam.synthesize(chunk, language_code=profile.language_code,
-                                                speaker=profile.tts_speaker)
-                    except SarvamError:
-                        break
+                    await say(chunk, profile)
+            out = []
+            for line in profile.fillers:
+                wav = await say(line, profile)
+                if wav is None:
+                    continue
+                try:
+                    pcm, rate = pcm_from_wav(wav)
+                    out.append(base64.b64encode(wav_from_pcm(resample(pcm, rate, PHONE_RATE), PHONE_RATE)).decode())
+                except (EOFError, ValueError, wave.Error):
+                    continue
+            if out:
+                filler_wavs[key] = out
 
     async def _speak_streaming(reply, s, text: str) -> None:
         """Dashboard voice: stream the reply as 16 kHz chunks while the model is still writing."""
@@ -440,6 +460,8 @@ def create_app(
     # kept alive for PHONE_RECONNECT_GRACE_S so the phone can rejoin the same session; only an
     # explicit hangup (or the grace running out) ends it.
     app.state.phone_grace_s = PHONE_RECONNECT_GRACE_S
+    app.state.warm_interval_s = float(os.getenv("PAATTI_WARM_INTERVAL_S", "1.5"))
+    app.state.warm_backoff_s = 20.0
     phone_links: dict[str, dict] = {}  # session id -> {"greeted", "gen", "end_task"}
     PHONE_FORWARD = ("turn", "notice", "ended")  # hub events the phone screen uses
 
