@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { apiUrl } from './api.js'
 import { Dispatch, LiveCalls, PhoneDemo } from './components/Ops.jsx'
 import { IntelCards, StageTracker, TimeWasted, Transcript } from './components/Panels.jsx'
 import { CHANNEL_LABEL } from './state.js'
@@ -133,8 +134,8 @@ export default function App() {
             <p className="muted">Identifiers, verbatim evidence quotes, stage timeline, BNS 318–319, SHA-256 hash. Unconfirmed digits stay out of the NCRP fields.</p>
             <Dispatch state={state} onDispatched={(m) => call.dispatch({ type: 'notice', id: Date.now(), message: m })} />
             <div className="row">
-              <a className={`btn primary ${state.sessionId ? '' : 'disabled'}`} href={state.sessionId ? `/api/sessions/${state.sessionId}/report.pdf` : undefined} aria-disabled={!state.sessionId}>Download PDF</a>
-              <a className={`btn ${state.sessionId ? '' : 'disabled'}`} href={state.sessionId ? `/api/sessions/${state.sessionId}/report.json` : undefined} aria-disabled={!state.sessionId}>JSON</a>
+              <a className={`btn primary ${state.sessionId ? '' : 'disabled'}`} href={state.sessionId ? apiUrl(`/api/sessions/${state.sessionId}/report.pdf`) : undefined} aria-disabled={!state.sessionId}>Download PDF</a>
+              <a className={`btn ${state.sessionId ? '' : 'disabled'}`} href={state.sessionId ? apiUrl(`/api/sessions/${state.sessionId}/report.json`) : undefined} aria-disabled={!state.sessionId}>JSON</a>
             </div>
           </section>
         </div>

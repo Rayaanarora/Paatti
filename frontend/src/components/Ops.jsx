@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
+import { apiUrl } from '../api.js'
 import { CHANNEL_LABEL, formatClock, formatHms, goldenHourLeft } from '../state.js'
 
 /** Live and recent calls; auto-follows new phone calls onto this screen. */
@@ -12,7 +13,7 @@ export function LiveCalls({ currentId, onOpen }) {
     let alive = true
     const load = async () => {
       try {
-        const r = await fetch('/api/sessions')
+        const r = await fetch(apiUrl('/api/sessions'))
         if (!r.ok || !alive) return
         const list = await r.json()
         setCalls(list)
@@ -78,7 +79,7 @@ export function PhoneDemo({ health, onCreate }) {
     try { sessionStorage.setItem('opToken', token) } catch { /* private mode */ }
     setRingMsg('Ringing…')
     try {
-      const r = await fetch('/api/telephony/call', {
+      const r = await fetch(apiUrl('/api/telephony/call'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Operator-Token': token },
         body: JSON.stringify({ to, persona }),
@@ -141,7 +142,7 @@ export function Dispatch({ state, onDispatched }) {
   const send = async (destination) => {
     setBusy(true)
     try {
-      const r = await fetch(`/api/sessions/${state.sessionId}/dispatch`, {
+      const r = await fetch(apiUrl(`/api/sessions/${state.sessionId}/dispatch`), {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination }),
       })
       const body = await r.json()

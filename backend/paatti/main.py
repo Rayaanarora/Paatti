@@ -85,7 +85,8 @@ def create_app(
     app.state.service = service
     app.state.store = store
     app.add_middleware(
-        CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["GET", "POST"],
+        CORSMiddleware, allow_origins=settings.cors_origins, allow_origin_regex=settings.cors_origin_regex,
+        allow_methods=["GET", "POST"],
         allow_headers=["Content-Type", "X-Operator-Token"],
     )
     app.include_router(telephony.router)

@@ -154,3 +154,14 @@ def test_create_session_with_persona(client):
     r = client.post("/api/sessions", json={"channel": "web-phone", "persona": "dadi"})
     assert r.json()["persona"] == "dadi" and r.json()["channel"] == "web-phone"
     assert client.post("/api/sessions", json={"channel": "phone"}).status_code == 422
+
+
+def test_cors_allows_vercel_dashboard_origins(monkeypatch):
+    monkeypatch.setenv("PAATTI_CORS_ORIGIN_REGEX", r"https://paatti[a-z0-9-]*\.vercel\.app")
+    c = TestClient(create_app(Settings()))
+    ok = c.options("/api/sessions", headers={"Origin": "https://paatti-console-abc123.vercel.app",
+                                              "Access-Control-Request-Method": "POST"})
+    assert ok.headers.get("access-control-allow-origin") == "https://paatti-console-abc123.vercel.app"
+    bad = c.options("/api/sessions", headers={"Origin": "https://evil.example",
+                                               "Access-Control-Request-Method": "POST"})
+    assert "access-control-allow-origin" not in bad.headers

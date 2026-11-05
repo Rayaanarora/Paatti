@@ -65,6 +65,8 @@ class Settings:
     cors_origins: list[str] = field(
         default_factory=lambda: _list("PAATTI_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
     )
+    # Also allow origins matching this regex (e.g. Vercel preview URLs of the dashboard).
+    cors_origin_regex: str | None = field(default_factory=lambda: os.getenv("PAATTI_CORS_ORIGIN_REGEX") or None)
     max_turn_chars: int = 2000
     max_turns_per_call: int = field(default_factory=lambda: int(os.getenv("PAATTI_MAX_TURNS", "300")))
     sarvam_daily_cap: int = field(default_factory=lambda: int(os.getenv("SARVAM_DAILY_CAP", "2000")))

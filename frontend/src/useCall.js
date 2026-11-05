@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { apiUrl, wsUrl } from './api.js'
 import { initialState, reducer } from './state.js'
 
-const wsUrl = (id) => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/sessions/${id}`
 
 const SpeechRecognition = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)
 
@@ -70,7 +70,7 @@ export function useCall() {
   }, [])
 
   useEffect(() => {
-    fetch('/api/health')
+    fetch(apiUrl('/api/health'))
       .then((r) => r.json())
       .then(setHealth)
       .catch(() => notice('Backend not reachable. Start it with: uvicorn paatti.main:app', 'error'))
@@ -114,7 +114,7 @@ export function useCall() {
   const connect = useCallback((snap) => {
     ws.current?.close()
     dispatch({ type: 'session', state: snap })
-    const sock = new WebSocket(wsUrl(snap.session_id))
+    const sock = new WebSocket(wsUrl(`/ws/sessions/${snap.session_id}`))
     ws.current = sock
     sock.onopen = () => dispatch({ type: 'connected', value: true })
     sock.onclose = () => { if (ws.current === sock) dispatch({ type: 'connected', value: false }) }
@@ -134,7 +134,7 @@ export function useCall() {
   /** Create a new call. channel 'web' = dashboard-driven, 'web-phone' = a mobile joins via QR. */
   const create = useCallback(async ({ channel = 'web', persona } = {}) => {
     try {
-      const r = await fetch('/api/sessions', {
+      const r = await fetch(apiUrl('/api/sessions'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel, persona }),
       })
       if (!r.ok) throw new Error(r.status === 429 ? 'Too many calls started; wait a minute.' : `HTTP ${r.status}`)
@@ -152,7 +152,7 @@ export function useCall() {
   /** Watch an existing call (e.g. a phone call) on this screen. */
   const attach = useCallback(async (sessionId) => {
     try {
-      const r = await fetch(`/api/sessions/${sessionId}`)
+      const r = await fetch(apiUrl(`/api/sessions/${sessionId}`))
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
       connect(await r.json())
     } catch (e) {

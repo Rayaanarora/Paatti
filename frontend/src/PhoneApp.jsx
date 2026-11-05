@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { apiUrl, wsUrl } from './api.js'
 import { formatClock } from './state.js'
 
 // Mic capture runs in an AudioWorklet; frames are downsampled to 16 kHz PCM16 and
@@ -156,7 +157,7 @@ export default function PhoneApp({ sessionId: initialId }) {
     usedInitial.current = true
     if (!id) {
       try {
-        const res = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'web-phone' }) })
+        const res = await fetch(apiUrl('/api/sessions'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'web-phone' }) })
         id = (await res.json()).session_id
       } catch {
         setError('Could not reach Paatti. Check the connection.')
@@ -166,7 +167,7 @@ export default function PhoneApp({ sessionId: initialId }) {
       }
     }
 
-    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/phone/${id}`)
+    const ws = new WebSocket(wsUrl(`/ws/phone/${id}`))
     r.ws = ws
     const pending = []
     const answer = () => {
