@@ -146,8 +146,18 @@ export function useCall() {
     const sock = new WebSocket(wsUrl(`/ws/sessions/${snap.session_id}`))
     ws.current = sock
     sock.onopen = () => dispatch({ type: 'connected', value: true })
-    sock.onclose = () => { if (ws.current === sock) dispatch({ type: 'connected', value: false }) }
-    sock.onerror = () => notice('Live connection failed. Is the backend running with uvicorn[standard]?', 'error')
+    sock.onclose = (ev) => {
+      if (ws.current === sock) dispatch({ type: 'connected', value: false })
+      if (ev.code === 4404) {
+        notice('Previous session expired. Click "New call" or scan a new QR code.', 'warn')
+      }
+    }
+    sock.onerror = () => {
+      // Browsers don't give error details to onerror; only notify if sock hasn't gracefully closed with 4404
+      if (sock.readyState === WebSocket.OPEN) {
+        notice('Live connection issue. Refresh or check connection.', 'error')
+      }
+    }
     sock.onmessage = (ev) => {
       const msg = JSON.parse(ev.data)
       if (msg.type === 'turn') {
