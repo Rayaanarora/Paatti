@@ -364,3 +364,21 @@ def test_live_calls_are_never_evicted():
     store.create()
     with pytest.raises(Exception):
         store.create()
+
+
+async def test_second_filler_when_model_is_very_slow(monkeypatch):
+    monkeypatch.setattr(voice_mod, "FILLER_AFTER_S", 0.01)
+    monkeypatch.setattr(voice_mod, "SECOND_FILLER_AFTER_S", 0.02)
+    service = make_service()
+    original = service.respond
+
+    async def very_slow(session, text, **kw):
+        await asyncio.sleep(0.15)
+        return await original(session, text, **kw)
+
+    service.respond = very_slow
+    sarvam = FakeSarvam(["hello madam this is the police"])
+    s, call, sent, _ = make_call(service, sarvam)
+    await call.handle_utterance(tone(300))
+    assert sarvam.spoken[0] in call.profile.fillers and sarvam.spoken[1] in call.profile.fillers
+    assert len(sent) == 3  # two fillers + the reply

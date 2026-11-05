@@ -16,7 +16,7 @@ class Settings:
     persona_model: str = field(default_factory=lambda: os.getenv("PAATTI_PERSONA_MODEL", "claude-opus-5-5"))
     extractor_model: str = field(default_factory=lambda: os.getenv("PAATTI_EXTRACTOR_MODEL", "claude-opus-5-5"))
     persona_effort: str = field(default_factory=lambda: os.getenv("PAATTI_PERSONA_EFFORT", "low"))
-    llm_timeout_s: float = field(default_factory=lambda: float(os.getenv("PAATTI_LLM_TIMEOUT", "8")))
+    llm_timeout_s: float = field(default_factory=lambda: float(os.getenv("PAATTI_LLM_TIMEOUT", "12")))
     use_llm: bool = field(default_factory=lambda: os.getenv("PAATTI_USE_LLM", "1") != "0")
     provider_override: str = field(default_factory=lambda: os.getenv("PAATTI_LLM_PROVIDER", "").lower())
 
@@ -25,14 +25,14 @@ class Settings:
         "GEMINI_API_KEYS", os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or ""))
     # Tried in order; a model that 404s is skipped for good, 429/503 cools it down.
     gemini_models: list[str] = field(default_factory=lambda: _list("PAATTI_GEMINI_MODELS", ",".join([
-        "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-flash-latest",
-        "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-lite-latest"])))
+        "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.5-flash-lite",
+        "gemini-3.7-flash", "gemini-3.8-flash", "gemini-flash-lite-latest"])))
     # Extraction runs on Lite models first so the persona keeps the main models' quota.
     gemini_extractor_models: list[str] = field(default_factory=lambda: _list("PAATTI_GEMINI_EXTRACTOR_MODELS", ",".join([
         "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-lite-latest",
         "gemini-3.5-flash", "gemini-flash-latest"])))
     gemini_thinking_level: str = field(default_factory=lambda: os.getenv("PAATTI_GEMINI_THINKING_LEVEL", "minimal"))
-    gemini_attempt_timeout_s: float = field(default_factory=lambda: float(os.getenv("PAATTI_GEMINI_ATTEMPT_TIMEOUT", "3.5")))
+    gemini_attempt_timeout_s: float = field(default_factory=lambda: float(os.getenv("PAATTI_GEMINI_ATTEMPT_TIMEOUT", "7")))
     gemini_rpm: int = field(default_factory=lambda: int(os.getenv("PAATTI_GEMINI_RPM", "8")))
     gemini_daily_cap: int = field(default_factory=lambda: int(os.getenv("PAATTI_GEMINI_DAILY_CAP", "600")))
     reply_cache_path: str = field(default_factory=lambda: os.getenv(

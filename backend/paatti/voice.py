@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 
 STT_RATE = 16000
 FILLER_AFTER_S = 0.6
+SECOND_FILLER_AFTER_S = 3.0
 
 
 class TTSCache:
@@ -154,10 +155,17 @@ class VoiceCall:
             return
         self._empty_streak = 0
         reply_task = asyncio.create_task(self.service.respond(self.session, text))
-        try:
-            paatti = await asyncio.wait_for(asyncio.shield(reply_task), FILLER_AFTER_S)
-        except asyncio.TimeoutError:
-            await self.play(next(self._fillers), cache=True)
+        # Up to two fillers while the model thinks (Gemini can take ~5 s), so the wait
+        # sounds like a grandmother fumbling for her pen rather than dead air.
+        waits = (FILLER_AFTER_S, SECOND_FILLER_AFTER_S)
+        paatti = None
+        for wait in waits:
+            try:
+                paatti = await asyncio.wait_for(asyncio.shield(reply_task), wait)
+                break
+            except asyncio.TimeoutError:
+                await self.play(next(self._fillers), cache=True)
+        if paatti is None:
             paatti = await reply_task
         await self.play(paatti["text"])
 
