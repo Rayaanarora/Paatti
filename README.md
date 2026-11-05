@@ -8,6 +8,7 @@ Built for BeyondHack 2.0 (SRM IST).
 
 | Doc | What's in it |
 |---|---|
+| [docs/CONTEXT.md](docs/CONTEXT.md) | **Everything in one file**: problem, architecture, APIs, config, deployment state, verified results, limits, next steps |
 | [docs/STUDY.md](docs/STUDY.md) | Full walkthrough: problem, every component, safety, glossary |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture, data flow, deployment diagrams |
 | [docs/DATABASE.md](docs/DATABASE.md) | SQLite schema and ER diagram |
