@@ -42,7 +42,7 @@ def test_text_turn_flow_and_readback(client):
 
     r = client.post(f"/api/sessions/{sid}/turn", json={"text": "Transfer to account 3456 7890 1234 immediately"})
     reply = r.json()["paatti"]["text"]
-    assert "345678901234" in reply.replace(" ", "").replace("-", "")  # Paatti reads it back
+    assert "345678901234" in reply.replace(" ", "").replace("-", "").replace(",", "")  # Paatti reads it back
 
     r = client.post(f"/api/sessions/{sid}/turn", json={"text": "Yes correct, do it fast"})
     assert r.json()["state"]["intel"]["account_number"]["confirmed"] is True

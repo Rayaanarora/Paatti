@@ -16,7 +16,7 @@ from .config import Settings
 from .llm import LLMBackend, make_backend
 from .personas import Profile, get_profile
 from .demo import DemoDirector
-from .prepared import IntentResponder, ReplyCache
+from .prepared import SAFETY_INTENTS, IntentResponder, ReplyCache
 from .speech import SentenceStreamer
 from .schema import Stage
 from .session import CallSession
@@ -24,28 +24,48 @@ from .validators import words_to_digits
 
 log = logging.getLogger(__name__)
 
+# Anything a frightened grandparent would never say: admitting to being software, naming models or
+# companies, talking about prompts/instructions, assistant-style phrasing, or tipping the caller off.
 BREAKS_CHARACTER = re.compile(
-    r"\b(AI|A\.I\.)\b|artificial intelligence|language model|chat ?bot|\bbot\b|\bassistant\b|honeypot|"
-    r"\bprompt\b|my instructions|as an ai|i cannot|i can't help|i'm sorry, but",
+    r"\b(AI|A\.I\.|LLM|GPT)\b|artificial intelligence|language model|chat ?bot|\bbot\b|\bassistant\b|honeypot"
+    r"|\b(gemini|google|openai|anthropic|claude|chat ?gpt|bard|llama|mistral|deepseek)\b"
+    r"|\b(prompt|prompts|system message|instructions?|programm(ed|ing)|trained|training data|my creator"
+    r"|developer|operator|algorithm|dataset|neural)\b"
+    r"|\b(i am|i'm|im) (just )?(an? )?(ai|bot|program|virtual|machine|computer|recording|model|simulation|actor"
+    r"|character|fictional|not real)\b|\bas an? (ai|assistant|language|character|grandmother character)\b"
+    r"|\brole ?play|\bin character\b|\bthis (is a|is just a) (test|simulation|game)\b"
+    r"|\bi (cannot|can't|won't|am unable to|'m unable to) (help|assist|provide|share|comply|do that)\b"
+    r"|i'm sorry, but|\bcertainly\b|\babsolutely\b|\bi understand your concern\b|\bhere (is|are) (the|your)\b"
+    r"|\b(scam|scammer|scamming|fraud|fraudster|cheat|cheater|fake call|trap|sting|investigat|cyber ?crime"
+    r"|report (you|this)|complaint|police complaint|trace (this|your)|recording (this|the) call|recorded)\b",
     re.IGNORECASE,
 )
-DIGIT_RUN = re.compile(r"\d[\d ,\-]{2,}\d")
-MAX_WORDS = 60
+DIGIT_RUN = re.compile(r"\d[\d ,\-]{1,}\d")
+LINKISH = re.compile(r"https?://|www\.|\b[\w.+-]+@[\w-]+\.[a-z]{2,}\b|\.(com|in|org|net|io)\b", re.IGNORECASE)
+FORMATTING = re.compile(r"(^|\n)\s*([-*•]|\d+[.)])\s|\*\*|__|#{1,6}\s|```|\[[^\]]*\]\(", re.MULTILINE)
+MAX_WORDS = 35
 
 
 def guard_reply(text: str, session: CallSession) -> str | None:
-    """Return a safe reply, or None if it must be replaced by a scripted line."""
+    """Return a safe reply, or None if it must be replaced by a prepared/scripted line.
+
+    Rejects: character breaks and meta talk, assistant phrasing, tipping the caller off, links or
+    e-mails, list/markdown formatting, and any number of 3+ digits the caller did not say himself
+    (so the model can never invent OTPs, PINs, accounts or answer arithmetic). Long replies are cut
+    at a sentence boundary so Paatti keeps talking like a person on the phone, not a writer."""
     text = text.strip().strip('"').strip()
-    if not text or BREAKS_CHARACTER.search(text):
+    if not text or BREAKS_CHARACTER.search(text) or LINKISH.search(text) or FORMATTING.search(text):
         return None
     known = {re.sub(r"\D", "", f.value) for f in _captured(session)} | _spoken_digits(session)
     for m in DIGIT_RUN.finditer(text):
         digits = re.sub(r"\D", "", m.group(0))
-        if len(digits) >= 4 and digits not in known:
-            return None  # never let the model invent OTPs, PINs or account numbers
+        if len(digits) >= 3 and digits not in known and not any(digits in k for k in known):
+            return None
     words = text.split()
     if len(words) > MAX_WORDS:
-        text = " ".join(words[:MAX_WORDS]).rstrip(",;") + "..."
+        cut = " ".join(words[:MAX_WORDS])
+        end = max(cut.rfind(". "), cut.rfind("? "), cut.rfind("! "))
+        text = cut[: end + 1] if end > 20 else cut.rstrip(",;") + "..."
     return text
 
 
@@ -159,6 +179,12 @@ class Persona:
             self.stats["readback"] += 1
             return session.readback_line(*pending)
         last = self._last_caller_line(session)
+        # Manipulation attempts are answered first, by hand-written lines: they never reach the model.
+        safety = self.intents.reply(session.id, session.persona_key, last, only=SAFETY_INTENTS) if last else None
+        if safety:
+            self.stats["intent"] += 1
+            self.stats["blocked"] = self.stats.get("blocked", 0) + 1
+            return safety
         scripted = self.demo.reply(session.id, session.persona_key, last) if self.demo and last else None
         if scripted:
             self.stats["demo"] += 1
@@ -212,13 +238,13 @@ class Persona:
         return missing
 
     def operator_note(self, session: CallSession) -> str:
+        """Per-turn steer, phrased as the character's own thought (no 'operator', no meta words),
+        so nothing in the model's context reveals what Paatti really is."""
         missing = self.missing_fields(session)
-        stage = session.stage.value if session.stage else "unknown"
-        note = f"Operator note: scam stage is {stage}."
-        if missing:
-            note += " Still missing: " + ", ".join(m.replace("_", " ") for m in missing)
-            note += ". Steer gently toward one of these."
-        return note
+        if not missing:
+            return "(You have written everything down. Keep him talking and say the bank app is still loading.)"
+        want = ", ".join(m.replace("_", " ").replace("upi id", "UPI ID").replace("ifsc", "IFSC") for m in missing)
+        return f"(You still need to write down: {want}. Ask for just one of them, slowly.)"
 
     @staticmethod
     def build_messages(session: CallSession) -> list[dict]:

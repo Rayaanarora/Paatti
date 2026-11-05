@@ -9,7 +9,7 @@ from paatti.config import Settings
 from paatti.main import create_app
 from paatti.persona import guard_reply
 from paatti.personas import PROFILES, RANDOM, get_profile, is_persona_choice, resolve_persona
-from paatti.prepared import INTENT_PATTERNS, IntentResponder
+from paatti.prepared import CONFUSED_LINES, INTENT_PATTERNS, SAFETY_INTENTS, IntentResponder
 from paatti.session import CallSession, RepeatRegistry
 from paatti.validators import digits_in, words_to_digits
 
@@ -20,7 +20,9 @@ BULBUL_V3_SPEAKERS = set(
     "soham rupali".split())
 TTS_LANGUAGES = {"bn-IN", "en-IN", "gu-IN", "hi-IN", "kn-IN", "ml-IN", "mr-IN", "od-IN", "pa-IN", "ta-IN", "te-IN"}
 STAGES = {None, "hook", "fear", "isolation", "extraction"}
-INTENTS = {name for name, _ in INTENT_PATTERNS}
+# Intents each profile answers with its own lines; jailbreak and trick-question intents are answered
+# from CONFUSED_LINES (per language), checked separately below.
+INTENTS = {name for name, _ in INTENT_PATTERNS} - {"injection", "turing_test"}
 ACCOUNT = "5021003477819920"
 
 
@@ -42,6 +44,7 @@ def test_every_profile_is_complete_and_valid(key):
     assert len(p.fillers) >= 3 and len(p.unclear) >= 2
     if key not in ("paatti", "dadi"):  # the first two keep their intent lines in prepared.py
         assert set(p.intents) == INTENTS and all(len(v) >= 2 for v in p.intents.values())
+    assert len(CONFUSED_LINES.get(p.key, [])) >= 2, f"{p.key} has no confused lines for jailbreak attempts"
 
 
 @pytest.mark.parametrize("key", sorted(PROFILES))
@@ -49,7 +52,7 @@ def test_readbacks_repeat_exactly_the_captured_values(key):
     p = PROFILES[key]
     # No extra number words ("chhe" = six) may sneak into the account read-back.
     assert digits_in(words_to_digits(p.readback_line("account_number", ACCOUNT))) == ACCOUNT
-    assert "HDFC0001234" in p.readback_line("ifsc", "HDFC0001234").replace(" ", "")
+    assert "HDFC0001234" in p.readback_line("ifsc", "HDFC0001234").replace(" ", "").replace(",", "")
     assert "rbi.verify@ybl" in p.readback_line("upi_id", "rbi.verify@ybl")
 
 
@@ -60,6 +63,7 @@ def test_every_scripted_line_passes_the_output_guard(key):
     s.add_scammer_turn("This is CBI.")
     lines = [p.greeting, *p.fillers, *p.unclear, *p.ask_missing.values()]
     lines += [line for v in p.scripted.values() for line in v] + [line for v in p.intents.values() for line in v]
+    lines += CONFUSED_LINES.get(p.key, [])
     for line in lines:
         assert guard_reply(line, s) == line.strip(), line
 

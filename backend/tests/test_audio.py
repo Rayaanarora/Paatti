@@ -149,3 +149,30 @@ def test_compress_silence_noop_for_speech_only_and_disabled():
     assert abs(len(compress_silence(pcm, 16000)) - len(pcm)) <= 2 * 16000 * 0.08
     assert compress_silence(silence(300, 16000) + pcm, 16000, max_gap_ms=0) == silence(300, 16000) + pcm
     assert compress_silence(b"", 16000) == b""
+
+
+def _zero_crossing_rate(pcm, rate):
+    import struct as _s
+
+    s = _s.unpack(f"<{len(pcm) // 2}h", pcm)
+    return sum(1 for a, b in zip(s, s[1:]) if (a < 0) != (b < 0)) / (len(s) / rate)
+
+
+def test_time_stretch_speeds_up_without_changing_pitch():
+    from paatti.audio import time_stretch
+
+    rate = 22050
+    pcm = tone(1000, rate, freq=220)
+    out = time_stretch(pcm, rate, 1.25)
+    assert abs(len(out) / 2 / rate - 0.8) < 0.04            # 1.0 s -> 0.8 s
+    zc_in, zc_out = _zero_crossing_rate(pcm, rate), _zero_crossing_rate(out, rate)
+    assert abs(zc_out - zc_in) / zc_in < 0.05               # same pitch (a plain resample would be +25%)
+
+
+def test_time_stretch_noop_cases():
+    from paatti.audio import time_stretch
+
+    pcm = tone(300, 16000)
+    assert time_stretch(pcm, 16000, 1.0) == pcm
+    assert time_stretch(b"", 16000, 1.3) == b""
+    assert time_stretch(pcm[:100], 16000, 1.3) == pcm[:100]  # too short to stretch

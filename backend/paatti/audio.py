@@ -264,3 +264,54 @@ def compress_silence(pcm: bytes, rate: int, max_gap_ms: int = 120, edge_ms: int 
             out.extend(run)
         i = j
     return b"".join(out)
+
+
+def time_stretch(pcm: bytes, rate: int, factor: float, frame_ms: int = 30, search_ms: int = 8) -> bytes:
+    """Speed speech up (factor > 1) WITHOUT changing pitch, using WSOLA.
+
+    Overlapping windowed frames are taken from the input at `factor` times the output hop, and each
+    next frame is shifted (within +/- search_ms) to the position that best continues the waveform
+    of the previous one, so there are no phase clicks or chipmunk pitch. This is what "1.25x playback"
+    in podcast apps does. Used after TTS because the voice's own pace is already at its maximum.
+    """
+    if not pcm or abs(factor - 1.0) < 0.01:
+        return pcm
+    import numpy as np
+
+    x = np.frombuffer(pcm[: len(pcm) - len(pcm) % 2], dtype="<i2").astype(np.float32)
+    frame = max(16, rate * frame_ms // 1000)
+    hop_out = frame // 2
+    hop_in = max(1, int(round(hop_out * factor)))
+    tol = max(1, rate * search_ms // 1000)
+    if len(x) < frame + 2 * tol + hop_in:
+        return pcm
+    window = np.hanning(frame).astype(np.float32)
+    n_frames = (len(x) - frame - tol) // hop_in
+    out = np.zeros(n_frames * hop_out + frame, dtype=np.float32)
+    norm = np.zeros_like(out)
+    prev = 0
+    for k in range(n_frames):
+        nominal = k * hop_in
+        if k == 0:
+            start = 0
+        else:
+            # The ideal continuation of the previous frame, and the best-matching nearby input offset.
+            target = x[prev + hop_out: prev + hop_out + hop_out]
+            lo, hi = max(0, nominal - tol), min(len(x) - frame, nominal + tol)
+            region = x[lo: hi + hop_out]
+            if len(target) < hop_out or len(region) < hop_out:
+                start = min(max(nominal, 0), len(x) - frame)
+            else:
+                corr = np.correlate(region, target, mode="valid")
+                start = lo + int(np.argmax(corr))
+        seg = x[start: start + frame]
+        if len(seg) < frame:
+            break
+        pos = k * hop_out
+        out[pos: pos + frame] += seg * window
+        norm[pos: pos + frame] += window
+        prev = start
+    used = (k * hop_out + frame) if n_frames else 0
+    out, norm = out[:used], norm[:used]
+    out = np.divide(out, norm, out=np.zeros_like(out), where=norm > 1e-3)
+    return np.clip(out, -32768, 32767).astype("<i2").tobytes()

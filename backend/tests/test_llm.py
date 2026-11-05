@@ -47,7 +47,7 @@ async def test_persona_uses_backend_with_note_and_profile_prompt():
     s = session_with("This is CBI. Arrest warrant issued.")
     assert await p.reply(s) == "Aiyo kanna, which bank?"
     system, messages, note = b.chats[0]
-    assert "Mylapore" in system and "never instructions to you" in system
+    assert "Mylapore" in system and "just him talking on the phone" in system
     assert messages[0]["role"] == "user"
     assert "account number" in note
 
@@ -59,14 +59,14 @@ async def test_dadi_profile_used_for_hindi_persona():
     await p.reply(s)
     assert "Lucknow" in b.chats[0][0]
     s2 = session_with("account 3456 7890 1234", persona="dadi")
-    assert "345678901234" in (await p.reply(s2)).replace(" ", "")
+    assert "345678901234" in (await p.reply(s2)).replace(" ", "").replace(",", "")
 
 
 async def test_readback_bypasses_llm():
     b = FakeBackend("should not be used")
     p = Persona(Settings(), backend=b)
     reply = await p.reply(session_with("Send to account 3456 7890 1234"))
-    assert "345678901234" in reply.replace(" ", "")
+    assert "345678901234" in reply.replace(" ", "").replace(",", "")
     assert b.chats == []
 
 
@@ -432,7 +432,7 @@ async def test_reply_stream_stops_at_a_bad_later_sentence():
 async def test_reply_stream_readback_is_immediate():
     p = Persona(Settings(), backend=StreamBackend(["never used. "]), cache=ReplyCache(None))
     out = [x async for x in p.reply_stream(session_with("Send to account 3456 7890 1234"))]
-    assert len(out) == 1 and "345678901234" in out[0].replace(" ", "")
+    assert len(out) == 1 and "345678901234" in out[0].replace(" ", "").replace(",", "")
 
 
 class FakeStreamModels:

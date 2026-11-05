@@ -81,7 +81,7 @@ async def test_utterance_goes_through_stt_persona_tts():
     s, call, sent, _ = make_call(service, sarvam)
     await call.handle_utterance(tone(500))
     assert s.intel.account_number.value == "345678901234"
-    assert any("3456" in t.replace(" ", "") for t in sarvam.spoken)  # read-back spoken aloud
+    assert any("3456" in t.replace(" ", "").replace(",", "") for t in sarvam.spoken)  # read-back spoken aloud
     assert sent and len(sent[-1]) == 2 * 800  # 0.1 s at 8 kHz after resampling
 
 
@@ -132,7 +132,7 @@ async def test_instant_reply_gets_no_filler():
     s, call, sent, _ = make_call(service, sarvam)
     await call.handle_utterance(tone(300))
     assert not any(t in call.profile.fillers for t in sarvam.spoken)
-    assert any("3456" in t.replace(" ", "") for t in sarvam.spoken)
+    assert any("3456" in t.replace(" ", "").replace(",", "") for t in sarvam.spoken)
 
 
 async def test_barge_in_clears_and_echo_guard_drops():

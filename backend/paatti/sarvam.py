@@ -18,7 +18,7 @@ from pathlib import Path
 import httpx
 
 from .config import Settings
-from .audio import compress_silence, pcm_from_wav, wav_from_pcm
+from .audio import compress_silence, pcm_from_wav, time_stretch, wav_from_pcm
 from .speech import normalize_for_tts
 
 log = logging.getLogger(__name__)
@@ -131,13 +131,17 @@ class SarvamClient:
         return audio_bytes
 
     def _tighten(self, wav: bytes) -> bytes:
-        """Cut long pauses out of the clip (pace is already at Sarvam's max): faster-sounding
-        speech with the same words, speed and pitch. Falls back to the original on any issue."""
-        if self.settings.tts_max_gap_ms <= 0:
+        """Make the clip sound like natural, quick speech: cut long pauses, then speed it up with a
+        pitch-preserving time-stretch (Sarvam's own pace is already at its max). Falls back to the
+        original clip on any decoding issue."""
+        if self.settings.tts_max_gap_ms <= 0 and abs(self.settings.tts_speedup - 1.0) < 0.01:
             return wav
         try:
             pcm, rate = pcm_from_wav(wav)
-            return wav_from_pcm(compress_silence(pcm, rate, max_gap_ms=self.settings.tts_max_gap_ms), rate)
+            if self.settings.tts_max_gap_ms > 0:
+                pcm = compress_silence(pcm, rate, max_gap_ms=self.settings.tts_max_gap_ms)
+            pcm = time_stretch(pcm, rate, self.settings.tts_speedup)  # faster, same pitch
+            return wav_from_pcm(pcm, rate)
         except (EOFError, ValueError, wave.Error):
             return wav
 
@@ -148,6 +152,7 @@ class SarvamClient:
         speaker = speaker or self.settings.tts_speaker
         text = text.strip()
         raw = (f"{language_code}|{speaker}|{self.settings.tts_pace}|gap{self.settings.tts_max_gap_ms}|"
+               f"x{self.settings.tts_speedup:.2f}|"
                f"{normalize_for_tts(text)}")
         return Path(self.settings.audio_cache_dir) / f"{hashlib.sha256(raw.encode()).hexdigest()[:16]}.wav"
 

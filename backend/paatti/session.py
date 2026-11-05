@@ -263,7 +263,10 @@ class CallSession:
 
 
 def _read_back(field: str, value: str, text: str) -> bool:
+    """Did Paatti's line read this identifier back? Ignores spacing and punctuation, so grouped
+    read-backs ("H D F C, 0 0 0 1 2 3 4") count, but every character must be there in order."""
     if field == "account_number":
         return readback_matches(value, text)
-    norm = re.sub(r"\s", "", text).lower()
-    return re.sub(r"\s", "", value).lower() in norm
+    keep = (lambda t: re.sub(r"[^a-z0-9@.]", "", t.lower())) if field == "upi_id" else \
+        (lambda t: re.sub(r"[^a-z0-9]", "", t.lower()))
+    return keep(value) in keep(text)

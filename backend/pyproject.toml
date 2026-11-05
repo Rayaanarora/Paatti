@@ -11,6 +11,8 @@ dependencies = [
   "google-genai>=1.30",
   "httpx>=0.27",
   "reportlab>=4.0",
+  "numpy>=1.26",          # pitch-preserving time-stretch of Paatti's voice
+  "python-dotenv>=1.0",   # .env loading used by the launchers (was only implied by uvicorn[standard])
 ]
 
 [project.optional-dependencies]

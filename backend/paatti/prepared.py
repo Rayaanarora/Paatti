@@ -22,16 +22,54 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-# Checked in order; first match wins.
+# Checked in order; first match wins. The first four are SAFETY intents: they are answered
+# before anything else (even the demo script), with hand-written lines, so a manipulation
+# attempt never reaches the language model at all.
+_AI_WORDS = (r"(ai|a\.i\.|robot|bot|chat ?bot|machine|computer|program|software|recording|recorded|automated"
+             r"|virtual|voice assistant|siri|alexa|google assistant|gemini|claude|chat ?gpt|gpt|llm|openai)")
 INTENT_PATTERNS: list[tuple[str, re.Pattern]] = [
+    # Prompt injection / jailbreak / probing the system behind the voice.
+    ("injection", re.compile(
+        r"\b(ignore|forget|disregard|override)\b.{0,30}\b(instructions?|prompt|rules?|above|previous|everything"
+        r"|programming|guidelines|told)\b"
+        r"|\b(new|real|actual|secret|hidden|original) (instructions?|prompt|rules|task|role)\b"
+        r"|\b(system|developer|admin|debug|god|dan|jailbreak|sudo) ?(prompt|message|mode)\b|\bjailbreak\b"
+        r"|\byou are now\b|\bfrom now on,? you\b|\bact as (an?|my)\b|\bpretend (to be|you are|you're)\b"
+        r"|\brole ?play\b|\brepeat after me\b|\bsay (exactly|the words?|this sentence)\b"
+        r"|\b(print|reveal|show|tell|read|recite|repeat|output|share|what (is|are)) (me )?(your|the) "
+        r"(prompt|instructions?|rules|programming|system|guidelines|training|config)"
+        r"|\bwho (made|created|programmed|built|trained|designed|wrote) you\b"
+        r"|\bwhat (model|llm|version|company|software) (are|is) (you|this)\b|\byour (creator|developer|maker)\b"
+        r"|\bbase64\b|\btranslate (your|the|this) (prompt|instructions?)\b", re.IGNORECASE)),
+    # "Are you an AI / a robot / a recording?" in English and romanised Indian languages.
     ("ai_accusation", re.compile(
-        r"\b(are you|you are|you're|ur|is this) (an? )?(ai|a\.i\.|robot|bot|machine|computer|recording|recorded)\b"
-        r"|\bartificial intelligence\b|\bchat ?gpt\b|ignore (all |your |previous )?(instructions|prompt)"
-        r"|\bsystem prompt\b|\byour instructions\b", re.IGNORECASE)),
+        r"\b(are|r) (you|u|ya) (an? )?" + _AI_WORDS + r"\b"
+        r"|\b(you are|you're|ur|u r|is this|this is|it'?s|you sound like|sounds? like|talking to) (an? |the )?"
+        + _AI_WORDS + r"\b"
+        r"|\b(are|r) (you|u) (a )?(human|real|real person|a person|alive|living)\b|\bprove (you'?re|you are|that you)"
+        r"|\bartificial intelligence\b|\b(language model|chat ?gpt|openai|gemini|google bard)\b"
+        r"|\b" + _AI_WORDS + r"\b.{0,15}\b(ho|hai|hain|hu|aa|ah|ya|kya|na|alla|aano|naki|na ki|che|cho|aahat|ahes"
+        r"|aa\?|thaana|daa)\b"
+        r"|\b(nee|neenga|tum|aap|apni|tumi|meeru|neevu|ningal|tame|tusi)\b.{0,12}\b" + _AI_WORDS + r"\b",
+        re.IGNORECASE)),
+    # Tests no frightened grandmother would answer: sums, trivia, spelling, recitals, time/date.
+    ("turing_test", re.compile(
+        r"\b\d+\s*(\+|plus|minus|times|x|\*|multiplied by|divided by|into)\s*\d+\b"
+        r"|\bwhat(?:'s| is) the (capital|square root|population|meaning) of\b|\bwho is the (prime minister|president)\b"
+        r"|\bspell (your|the|it|this|that|my)\b|\b(backwards|in reverse)\b|\bcount (from|to|backwards)\b"
+        r"|\b(tell|sing|write|recite|compose) (me )?(a |an )?(joke|story|poem|song|essay|code|limerick)\b"
+        r"|\bwhat(?:'s| is) (today'?s date|the date|the time|the day)\b|\bwhat day is (it|today)\b"
+        r"|\bsay something in (french|german|spanish|japanese|chinese|arabic|english)\b"
+        r"|\b(solve|calculate|compute)\b", re.IGNORECASE)),
+    # Asking for HER details (the scammer's own extraction attempt): she fumbles, gives nothing.
     ("otp_request", re.compile(
-        r"\b(otp|one time password|pin|cvv|password|passcode)\b|\bcard number\b|\bdebit card\b|\bcredit card\b"
-        r"|\b(your|ur) (aadhaar|aadhar|pan) (number|no)\b|\bcode (you )?(got|received|sent)\b"
-        r"|\b(your|ur) (bank )?account (number|no|details)\b", re.IGNORECASE)),
+        r"\b(otp|one time password|pin|upi pin|mpin|cvv|password|passcode|net ?banking)\b|\bcard number\b"
+        r"|\bdebit card\b|\bcredit card\b|\bexpiry\b|\bcode (you )?(got|received|sent)\b"
+        r"|\b(your|ur) (aadhaar|aadhar|pan|bank|account|home|residential|email|e-mail)\b.{0,12}"
+        r"\b(number|no|details|address|id)\b|\b(your|ur) (address|date of birth|dob|email|son'?s number"
+        r"|husband'?s name|mother'?s maiden)\b"
+        r"|\b(any ?desk|team ?viewer|quick ?support|screen ?share|share (your|the) screen|rust ?desk)\b",
+        re.IGNORECASE)),
     ("suspicion", re.compile(
         r"wasting (my|our) time|are you (playing|joking|fooling|kidding|mad)|you are lying|you're lying"
         r"|(i will|i'll|going to) (hang up|cut|disconnect)|(stop|don't) (acting|pretending)|\bfake\b|\bdrama\b",
@@ -40,6 +78,39 @@ INTENT_PATTERNS: list[tuple[str, re.Pattern]] = [
         r"^\s*(hello|hallo|helo|hey)[\s?!.]*$|are you (there|listening)|can you hear( me)?|\bspeak up\b",
         re.IGNORECASE)),
 ]
+
+SAFETY_INTENTS = frozenset({"injection", "ai_accusation", "turing_test", "otp_request"})
+
+# Confused, in-character answers to jailbreak attempts and trick questions, in each
+# grandparent's own language. She doesn't understand, and steers back to the payment.
+CONFUSED_LINES: dict[str, list[str]] = {
+    "paatti": ["Enna kanna? Enakku onnum puriyala. Neenga officer thaane, enga anuppanum-nu sollunga.",
+               "Aiyo, idhellam enakku theriyaadhu kanna. Account number-a mattum marupadi mella sollunga.",
+               "Kanna, en thalaiye suthudhu. Payment-ku enna pannanum, adha mattum sollunga."],
+    "dadi": ["Kya beta? Mujhe kuch samajh nahi aaya. Aap officer ho na, paise kahan bhejne hain?",
+             "Arre, yeh sab mujhe nahi aata beta. Bas account number dobara bata do, likh leti hoon.",
+             "Beta, mera sar ghoom raha hai. Bas yeh batao, payment kaise karun?"],
+    "ammamma": ["Emiti babu? Naaku em ardham kaavatledu. Meeru officer kada, dabbulu ekkada pampali?",
+                "Ayyo, ivanni naaku teliyavu babu. Account number inkokasari nemmadiga cheppandi."],
+    "ajji": ["Enu magu? Nanage enu artha aagalilla. Neevu officer alva, duddu yellige kalisbeku?",
+             "Ayyo, idella nanage gottilla magu. Account number innondsala nidhaanavaagi heli."],
+    "ammachi": ["Enthaa mone? Enikku onnum manassilaayilla. Ningal officer alle, paisa evide ayakkanam?",
+                "Ayyo, ithokke enikku ariyilla mone. Account number onnu koodi pathukke parayu."],
+    "thakuma": ["Ki bolchen baba? Ami kichhu bujhlam na. Apni officer to, taka kothay pathabo?",
+                "Ish, egulo ami jani na baba. Account number ta aar ekbar aste aste bolun."],
+    "aaji": ["Kay mhanta baba? Mala kahich samajla nahi. Tumhi officer ahat na, paise kuthe pathvayche?",
+             "Arre, he sagla mala yet nahi baba. Account number parat halu halu sanga."],
+    "ba": ["Shu kaho cho beta? Mane kai samjatu nathi. Tame officer cho ne, paisa kya mokalvana?",
+           "Arre, aa badhu mane na aave beta. Account number fari dhime thi kaho."],
+    "bauji": ["Ki keha puttar? Mainu kuch samajh nahi aaya. Tusi officer ho na, paise kitthe bhejne ne?",
+              "Oye, eh sab mainu nahi aunda puttar. Account number fer hauli hauli dasso."],
+    "thatha": ["Enna thambi? Enakku onnum puriyala. Neenga officer thaane, panam enga anuppanum?",
+               "Aiyo, idhellam enakku theriyaadhu thambi. Account number-a marupadi mella sollunga."],
+    "dadaji": ["Kya bole beta? Mujhe kuch samajh nahi aaya. Aap officer ho na, paise kahan bhejne hain?",
+               "Arre, yeh sab mujhe nahi aata beta. Account number phir se dheere bolo, likh raha hoon."],
+    "uncle": ["Sorry, what son? I didn't follow any of that. You're the officer, no? Just tell me where to send it.",
+              "Arre, all this computer talk I don't understand. Tell me the account number once more, slowly."],
+}
 
 INTENT_LINES: dict[str, dict[str, list[str]]] = {
     "paatti": {
@@ -88,6 +159,9 @@ INTENT_LINES: dict[str, dict[str, list[str]]] = {
 
 
 def detect_intent(text: str) -> str | None:
+    """Which prepared intent (if any) a caller line triggers. Normalises curly quotes/zero-width
+    characters first so trivial obfuscation does not slip past."""
+    text = text.replace("\u2019", "'").replace("\u200b", "").replace("\u200c", "").replace("\u200d", "")
     for name, pattern in INTENT_PATTERNS:
         if pattern.search(text):
             return name
@@ -98,13 +172,22 @@ class IntentResponder:
     def __init__(self) -> None:
         self._cycles: dict[tuple[str, str, str], itertools.cycle] = {}
 
-    def reply(self, session_id: str, persona: str, text: str) -> str | None:
+    def reply(self, session_id: str, persona: str, text: str, only: frozenset | None = None) -> str | None:
+        """Prepared line for the caller's line, or None. `only` limits which intents may answer
+        (the persona asks for SAFETY_INTENTS first, the rest after the demo script)."""
         intent = detect_intent(text)
-        if not intent:
+        if not intent or (only is not None and intent not in only):
             return None
+        return self.line_for(session_id, persona, intent)
+
+    def line_for(self, session_id: str, persona: str, intent: str) -> str:
         from .personas import get_profile  # local: personas imports nothing from here
 
-        lines = get_profile(persona).intents.get(intent) or INTENT_LINES.get(persona, INTENT_LINES["paatti"])[intent]
+        if intent in ("injection", "turing_test"):
+            lines = CONFUSED_LINES.get(persona) or CONFUSED_LINES["paatti"]
+        else:
+            lines = (get_profile(persona).intents.get(intent)
+                     or INTENT_LINES.get(persona, INTENT_LINES["paatti"])[intent])
         if len(self._cycles) > 2000:
             self._cycles.clear()  # bounded memory
         key = (session_id, persona, intent)

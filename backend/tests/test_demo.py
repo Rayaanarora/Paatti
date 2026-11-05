@@ -20,8 +20,8 @@ def test_rehearsed_call_gets_scripted_replies_and_real_readbacks(monkeypatch):
     texts = [r["paatti"]["text"] for r in replies]
     scripted = [s.reply for s in STEPS["paatti"]]
     assert texts[0] == scripted[0] and texts[1] == scripted[1] and texts[2] == scripted[2]
-    assert "5021003477819920" in texts[3].replace(" ", "")      # account read-back, from captured digits
-    assert "HDFC0001234" in texts[4].replace(" ", "")           # IFSC read-back
+    assert "5021003477819920" in texts[3].replace(" ", "").replace(",", "")      # account read-back, from captured digits
+    assert "HDFC0001234" in texts[4].replace(" ", "").replace(",", "")           # IFSC read-back
     assert texts[5] == scripted[3]                               # asks for UPI
     assert "rbi.verify@ybl" in texts[6]                          # UPI read-back
     assert texts[7] == scripted[4]                               # finale
