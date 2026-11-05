@@ -92,7 +92,9 @@ class SessionStore:
     def create(self, *, persona_key: str = "paatti", channel: str = "web", caller_id: str | None = None) -> CallSession:
         if len(self._sessions) >= self.max_sessions:
             ended = [s for s in self._sessions.values() if s.ended_at is not None]
-            victim = min(ended or self._sessions.values(), key=lambda s: s.started_at)
+            if not ended:
+                raise HTTPException(status_code=503, detail="too many live calls")  # never drop a live call
+            victim = min(ended, key=lambda s: s.started_at)
             self._sessions.pop(victim.id, None)
         s = CallSession(self.registry, persona_key=persona_key, channel=channel, caller_id=caller_id)
         self._sessions[s.id] = s
@@ -136,6 +138,7 @@ class CallService:
         self.store = store
         self.hub = hub
         self._tasks: set[asyncio.Task] = set()
+        self._turn_locks: dict[str, asyncio.Lock] = {}
 
     def create_session(self, *, persona_key: str | None = None, channel: str = "web",
                        caller_id: str | None = None) -> CallSession:
@@ -167,7 +170,15 @@ class CallService:
         return turn
 
     async def respond(self, session: CallSession, text: str, *, background_extract: bool = True) -> dict:
-        """One caller turn -> persona reply. Publishes turn/state events; returns the persona turn."""
+        """One caller turn -> persona reply. Serialised per call so replies never interleave."""
+        lock = self._turn_locks.setdefault(session.id, asyncio.Lock())
+        async with lock:
+            return await self._respond(session, text, background_extract)
+
+    async def _respond(self, session: CallSession, text: str, background_extract: bool) -> dict:
+        if len(session.turns) >= self.settings.max_turns_per_call:
+            self.end(session)
+            raise HTTPException(status_code=409, detail="call reached its turn limit")
         text = text.strip()[: self.settings.max_turn_chars]
         with session.lock:
             session.add_scammer_turn(text)
@@ -199,6 +210,7 @@ class CallService:
         task.add_done_callback(self._tasks.discard)
 
     def end(self, session: CallSession) -> None:
+        self._turn_locks.pop(session.id, None)
         session.end()
         self.publish_state(session)
         self.hub.publish(session.id, {"type": "ended"})

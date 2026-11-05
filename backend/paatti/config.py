@@ -32,6 +32,7 @@ class Settings:
         "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-lite-latest",
         "gemini-3.5-flash", "gemini-flash-latest"])))
     gemini_thinking_level: str = field(default_factory=lambda: os.getenv("PAATTI_GEMINI_THINKING_LEVEL", "minimal"))
+    gemini_attempt_timeout_s: float = field(default_factory=lambda: float(os.getenv("PAATTI_GEMINI_ATTEMPT_TIMEOUT", "3.5")))
     gemini_rpm: int = field(default_factory=lambda: int(os.getenv("PAATTI_GEMINI_RPM", "8")))
     gemini_daily_cap: int = field(default_factory=lambda: int(os.getenv("PAATTI_GEMINI_DAILY_CAP", "600")))
     reply_cache_path: str = field(default_factory=lambda: os.getenv(
@@ -64,6 +65,10 @@ class Settings:
         default_factory=lambda: _list("PAATTI_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
     )
     max_turn_chars: int = 2000
+    max_turns_per_call: int = field(default_factory=lambda: int(os.getenv("PAATTI_MAX_TURNS", "300")))
+    sarvam_daily_cap: int = field(default_factory=lambda: int(os.getenv("SARVAM_DAILY_CAP", "2000")))
+    anthropic_daily_cap: int = field(default_factory=lambda: int(os.getenv("PAATTI_ANTHROPIC_DAILY_CAP", "400")))
+    reply_cache_max: int = field(default_factory=lambda: int(os.getenv("PAATTI_REPLY_CACHE_MAX", "2000")))
     max_audio_bytes: int = 5 * 1024 * 1024
     max_sessions: int = field(default_factory=lambda: int(os.getenv("PAATTI_MAX_SESSIONS", "200")))
     sessions_per_minute: int = field(default_factory=lambda: int(os.getenv("PAATTI_SESSIONS_PER_MIN", "30")))

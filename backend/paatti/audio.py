@@ -157,6 +157,7 @@ class VAD:
         self._silent_run = 0
         self._speech_frames = 0
         self._utt: list[bytes] = []
+        self._levels: list[float] = []
         self._pending: list[bytes] = []
         self._buf = b""
 
@@ -197,6 +198,7 @@ class VAD:
             return []
 
         self._utt.append(frame)
+        self._levels.append(level)
         if voiced:
             self._speech_frames += 1
             self._silent_run = 0
@@ -206,10 +208,15 @@ class VAD:
             pcm = b"".join(self._utt)
             enough = self._speech_frames >= self.min_frames
             forced = len(self._utt) >= self.max_frames
+            levels = sorted(self._levels)
             self.in_speech = False
-            self._utt, self._voiced_run, self._silent_run, self._speech_frames = [], 0, 0, 0
-            if forced:
-                # Keep listening seamlessly after a forced cut.
-                self.in_speech = True
+            self._utt, self._levels, self._voiced_run, self._silent_run, self._speech_frames = [], [], 0, 0, 0
+            if forced and levels:
+                # Speech rises and falls (syllables, pauses); steady line noise is flat. If a forced
+                # 15 s cut was flat, it was noise: re-learn the floor from it so we stop hearing it.
+                low, mid = levels[len(levels) // 5], levels[len(levels) // 2]
+                if mid and low >= 0.6 * mid:
+                    self.noise = max(self.noise, low)
+                    enough = False
             return [("utterance", pcm)] if enough else []
         return []

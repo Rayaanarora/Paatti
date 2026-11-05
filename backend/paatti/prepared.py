@@ -103,6 +103,8 @@ class IntentResponder:
         if not intent:
             return None
         lines = INTENT_LINES.get(persona, INTENT_LINES["paatti"])[intent]
+        if len(self._cycles) > 2000:
+            self._cycles.clear()  # bounded memory
         key = (session_id, persona, intent)
         if key not in self._cycles:
             self._cycles[key] = itertools.cycle(lines)
@@ -116,7 +118,8 @@ def normalise(text: str) -> str:
 class ReplyCache:
     """JSON file of LLM replies keyed by the conversational situation."""
 
-    def __init__(self, path: str | os.PathLike | None, writable: bool = True):
+    def __init__(self, path: str | os.PathLike | None, writable: bool = True, max_entries: int = 2000):
+        self.max_entries = max_entries
         self.path = Path(path) if path else None
         self.writable = writable and self.path is not None
         self._lock = threading.Lock()
@@ -137,6 +140,8 @@ class ReplyCache:
 
     def put(self, key: str, reply: str) -> None:
         with self._lock:
+            if key not in self._data and len(self._data) >= self.max_entries:
+                return  # full: keep serving what we have, stop growing
             self._data[key] = reply
             if not self.writable:
                 return

@@ -373,3 +373,10 @@ async def test_claude_extract():
     assert msgs.calls[0]["output_format"] is LooseExtraction
     cut = FakeAnthropicMessages(SimpleNamespace(stop_reason="max_tokens", parsed_output=None))
     assert await claude(cut).extract("s", "t") is None
+
+
+async def test_gemini_hanging_model_is_skipped_within_one_turn():
+    fake = FakeGeminiModels(by_model={"m-a": ("sleep", 5)}, default=SimpleNamespace(text="fast model"))
+    b = gemini(fake, llm_timeout_s=2.0, gemini_attempt_timeout_s=0.3)
+    assert await b.chat("s", [{"role": "user", "content": "x"}], None) == "fast model"
+    assert [c["model"] for c in fake.calls] == ["m-a", "m-b"]

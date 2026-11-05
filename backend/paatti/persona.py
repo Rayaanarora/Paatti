@@ -71,7 +71,8 @@ class Persona:
                  cache: ReplyCache | None = None):
         self.settings = settings
         self.backend = backend if backend is not None else (make_backend(settings) if use_backend else None)
-        self.cache = cache if cache is not None else ReplyCache(settings.reply_cache_path, settings.reply_cache_write)
+        self.cache = cache if cache is not None else ReplyCache(settings.reply_cache_path, settings.reply_cache_write,
+                                                                max_entries=settings.reply_cache_max)
         self.intents = IntentResponder()
         self._counters: dict[str, itertools.count] = {}
         self.stats = {"readback": 0, "intent": 0, "cache": 0, "llm": 0, "script": 0}
@@ -94,10 +95,12 @@ class Persona:
         if intent_line:
             self.stats["intent"] += 1
             return intent_line
+        prev = next((t.text for t in reversed(session.turns) if t.role == "paatti"), "")
+        cacheable = len(last.split()) >= 4  # "ok", "haan", "tell me" depend on context: don't cache
         key = ReplyCache.key(session.persona_key, session.stage.value if session.stage else None,
-                             self.missing_fields(session), last)
-        cached = self.cache.get(key)
-        if cached and guard_reply(cached, session):
+                             self.missing_fields(session), f"{prev}\n{last}")
+        cached = self.cache.get(key) if cacheable else None
+        if cached and cached != prev and guard_reply(cached, session):
             self.stats["cache"] += 1
             return cached
         if self.backend:
@@ -106,7 +109,7 @@ class Persona:
             safe = guard_reply(raw, session) if raw else None
             if safe:
                 self.stats["llm"] += 1
-                if last:
+                if cacheable:
                     self.cache.put(key, safe)
                 return safe
             if raw:

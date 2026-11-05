@@ -70,3 +70,15 @@ def test_websocket_voice_loop(monkeypatch):
         assert ws.receive_json()["type"] == "state"
         ws.send_json({"type": "end"})
         ws.receive_json()
+
+
+@pytest.mark.asyncio
+async def test_network_errors_become_sarvam_errors():
+    def boom(request):
+        raise httpx.ConnectError("proxy refused")
+
+    c = make_client(boom)
+    with pytest.raises(SarvamError):
+        await c.transcribe(b"a")
+    with pytest.raises(SarvamError):
+        await c.synthesize("x")

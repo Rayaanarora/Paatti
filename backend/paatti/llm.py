@@ -138,8 +138,11 @@ class GeminiBackend:
             if "2.5" in slot.model:
                 kw["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
             elif self.settings.gemini_thinking_level:
-                kw["thinking_config"] = types.ThinkingConfig(
-                    thinking_level=types.ThinkingLevel(self.settings.gemini_thinking_level.upper()))
+                try:
+                    level = types.ThinkingLevel(self.settings.gemini_thinking_level.upper())
+                    kw["thinking_config"] = types.ThinkingConfig(thinking_level=level)
+                except ValueError:
+                    log.warning("ignoring invalid PAATTI_GEMINI_THINKING_LEVEL")
         return types.GenerateContentConfig(**kw)
 
     async def _generate(self, models: list[str], contents, system: str, timeout: float, **extra):
@@ -156,6 +159,9 @@ class GeminiBackend:
             remaining = deadline - time.monotonic()
             if remaining < 0.3:
                 break
+            # Cap each attempt so one hanging model can't use the whole budget; the next
+            # model in the chain still gets a chance within the same turn.
+            remaining = min(remaining, self.settings.gemini_attempt_timeout_s)
             attempts += 1
             self.pool.used(slot)
             try:
@@ -227,8 +233,18 @@ class AnthropicBackend:
         self.client = client or anthropic.AsyncAnthropic(
             api_key=settings.anthropic_api_key, timeout=settings.llm_timeout_s, max_retries=1
         )
+        self.pool = GeminiPool(1, rpm=10_000, daily_cap=settings.anthropic_daily_cap)  # reused as a daily counter
+
+    def _budget(self) -> bool:
+        if not self.pool.budget_left():
+            log.warning("claude daily cap reached; using scripted replies")
+            return False
+        self.pool.calls_today += 1
+        return True
 
     async def chat(self, system: str, messages: list[dict], note: str | None) -> str | None:
+        if not self._budget():
+            return None
         msgs = list(messages)
         if note:
             # Mid-conversation system message keeps the cached prefix intact.
@@ -252,6 +268,8 @@ class AnthropicBackend:
         return text or None
 
     async def extract(self, system: str, transcript: str) -> LooseExtraction | None:
+        if not self._budget():
+            return None
         try:
             resp = await self.client.beta.messages.parse(
                 model=self.settings.extractor_model,

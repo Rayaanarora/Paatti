@@ -12,6 +12,7 @@ need the operator token and only reach allowlisted numbers.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import hashlib
@@ -21,7 +22,8 @@ import logging
 import re
 import secrets
 import time
-from urllib.parse import parse_qsl
+from collections import OrderedDict
+from urllib.parse import parse_qsl, urlencode
 from xml.sax.saxutils import quoteattr
 
 import httpx
@@ -30,6 +32,7 @@ from pydantic import BaseModel, Field
 
 from .audio import mulaw_decode, mulaw_encode
 from .config import Settings
+from .personas import PROFILES
 from .sarvam import SarvamClient
 from .service import CallService, RateLimiter
 from .voice import VoiceCall
@@ -71,6 +74,7 @@ class TelephonyBridge:
         self.sarvam = sarvam
         self.http = http
         self._tokens: dict[str, tuple[str, float]] = {}
+        self._seen_calls: OrderedDict[str, None] = OrderedDict()  # webhook replay protection
         self.limiter = RateLimiter(10)
         self.router = self._build_router()
 
@@ -118,6 +122,12 @@ class TelephonyBridge:
                 raise HTTPException(status_code=503, detail="telephony not configured")
             params = dict(parse_qsl((await request.body()).decode(), keep_blank_values=True))
             self._check_signature(request, params)
+            call_sid = params.get("CallSid", "")
+            if call_sid in self._seen_calls:
+                raise HTTPException(status_code=409, detail="duplicate CallSid")
+            self._seen_calls[call_sid] = None
+            while len(self._seen_calls) > 1000:
+                self._seen_calls.popitem(last=False)
             if not self.sarvam:
                 twiml = ('<?xml version="1.0" encoding="UTF-8"?><Response><Say>Voice service not configured.</Say>'
                          "<Hangup/></Response>")
@@ -126,6 +136,7 @@ class TelephonyBridge:
             # The "scammer" is whoever is on the other end: caller (inbound) or callee (outbound).
             other_party = params.get("To") if outbound else params.get("From")
             persona = request.query_params.get("persona")
+            persona = persona if persona in PROFILES else None
             session = self.service.create_session(persona_key=persona, channel="phone", caller_id=other_party)
             return Response(self._twiml_stream(self._mint_token(session.id)), media_type="application/xml")
 
@@ -149,8 +160,8 @@ class TelephonyBridge:
             if to not in allowed:
                 raise HTTPException(status_code=403, detail="number not in PAATTI_OUTBOUND_ALLOWLIST")
             url = self._public("/telephony/twilio/voice")
-            if body.persona:
-                url += f"?persona={body.persona}"
+            if body.persona in PROFILES:
+                url += "?" + urlencode({"persona": body.persona})
             http = self.http or httpx.AsyncClient(timeout=15)
             try:
                 resp = await http.post(
@@ -174,9 +185,13 @@ class TelephonyBridge:
         call: VoiceCall | None = None
         session = None
         stream_sid = None
+        warm_task: asyncio.Task | None = None
         try:
+            first = True
             while True:
-                raw = await ws.receive_text()
+                # Unauthenticated until 'start' presents a valid token: don't wait forever.
+                raw = await (asyncio.wait_for(ws.receive_text(), 10) if first or call is None else ws.receive_text())
+                first = False
                 try:
                     msg = json.loads(raw)
                 except json.JSONDecodeError:
@@ -192,8 +207,8 @@ class TelephonyBridge:
                         return
                     call = self._make_call(ws, session, stream_sid)
                     call.start()
-                    await call.warm()
                     await call.greet()
+                    warm_task = asyncio.create_task(call.warm())  # fillers ready by the first reply
                 elif event == "media" and call is not None and session is not None:
                     media = msg.get("media") or {}
                     if media.get("track", "inbound") != "inbound":
@@ -206,9 +221,11 @@ class TelephonyBridge:
                     await call.feed(mulaw_decode(payload))
                 elif event == "stop":
                     break
-        except WebSocketDisconnect:
+        except (WebSocketDisconnect, asyncio.TimeoutError):
             pass
         finally:
+            if warm_task:
+                warm_task.cancel()
             if call:
                 await call.close()
             if session is not None:

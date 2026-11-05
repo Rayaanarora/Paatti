@@ -300,3 +300,67 @@ def test_browser_phone_unknown_session_closes():
     with pytest.raises(Exception):
         with c.websocket_connect("/ws/phone/missing") as ws:
             ws.receive_json()
+
+
+# ---- abuse protections ------------------------------------------------------
+
+def test_dashboard_cannot_drive_or_end_a_phone_call_and_ids_are_masked():
+    app = create_app(twilio_settings(operator_token="op"), sarvam=FakeSarvam())
+    c = TestClient(app)
+    signed_post(c, {"CallSid": "CA7", "From": "+919876543210", "Direction": "inbound"})
+    s = app.state.store.all()[0]
+    with c.websocket_connect(f"/ws/sessions/{s.id}") as ws:
+        ws.receive_json()
+        ws.send_json({"type": "scammer_text", "text": "hijack"})
+        assert "watch only" in ws.receive_json()["message"]
+        ws.send_json({"type": "end"})
+        assert "watch only" in ws.receive_json()["message"]
+    assert s.turns == [] and s.ended_at is None
+    assert c.get("/api/sessions").json()[0]["caller_id"] == "+91******3210"
+    assert c.get("/api/sessions", headers={"X-Operator-Token": "op"}).json()[0]["caller_id"] == "+919876543210"
+    assert c.get("/api/history").json()["calls"][0]["caller_id"] == "+91******3210"
+
+
+def test_replayed_webhook_is_rejected():
+    c = TestClient(create_app(twilio_settings(), sarvam=FakeSarvam()))
+    params = {"CallSid": "CA42", "From": "+919876543210", "Direction": "inbound"}
+    assert signed_post(c, params).status_code == 200
+    assert signed_post(c, params).status_code == 409
+
+
+def test_turn_cap_ends_call(monkeypatch):
+    monkeypatch.setenv("PAATTI_MAX_TURNS", "4")
+    c = TestClient(create_app(Settings()))
+    sid = c.post("/api/sessions").json()["session_id"]
+    for _ in range(2):
+        assert c.post(f"/api/sessions/{sid}/turn", json={"text": "hello"}).status_code == 200
+    assert c.post(f"/api/sessions/{sid}/turn", json={"text": "hello"}).status_code == 409
+
+
+async def test_utterance_flood_is_dropped():
+    service = make_service()
+    _, call, _, _ = make_call(service, FakeSarvam())  # worker not started: queue fills
+    pcm = silence(200) + tone(600) + silence(900)
+    for _ in range(5):
+        for f in frames_of(pcm, 8000, 20):
+            await call.feed(f)
+    assert call._queue.qsize() == 2
+
+
+async def test_sarvam_daily_cap():
+    from paatti.sarvam import SarvamClient
+
+    settings = Settings(sarvam_api_key="k", sarvam_daily_cap=1)
+    http = httpx.AsyncClient(base_url="https://s.test", transport=httpx.MockTransport(
+        lambda r: httpx.Response(200, json={"transcript": "hi"})))
+    c = SarvamClient(settings, http=http)
+    assert await c.transcribe(b"x") == "hi"
+    with pytest.raises(SarvamError):
+        await c.transcribe(b"x")
+
+
+def test_live_calls_are_never_evicted():
+    store = SessionStore(1)
+    store.create()
+    with pytest.raises(Exception):
+        store.create()

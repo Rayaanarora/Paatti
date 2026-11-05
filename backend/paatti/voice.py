@@ -79,7 +79,9 @@ class VoiceCall:
         self.profile = get_profile(session.persona_key)
         self.vad = VAD(rate=in_rate)
         self.play_until = 0.0
-        self._queue: asyncio.Queue[bytes] = asyncio.Queue()
+        # Bounded: if the caller floods audio faster than we can answer, drop extra utterances
+        # instead of queueing unlimited paid STT/LLM/TTS work.
+        self._queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=2)
         self._worker: asyncio.Task | None = None
         self._fillers = itertools.cycle(self.profile.fillers)
         self._unclear = itertools.cycle(self.profile.unclear or self.profile.fillers)
@@ -121,7 +123,10 @@ class VoiceCall:
                 self.play_until = 0.0
                 await self.clear_audio()
             elif kind == "utterance" and data:
-                await self._queue.put(data)
+                try:
+                    self._queue.put_nowait(data)
+                except asyncio.QueueFull:
+                    log.warning("dropping utterance: caller is ahead of the pipeline")
 
     # ---- turn processing -------------------------------------------------
     async def _run(self) -> None:

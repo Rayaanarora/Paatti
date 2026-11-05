@@ -22,18 +22,30 @@ function toBase64(bytes) {
   return btoa(bin)
 }
 
-function downsample(float32, fromRate) {
+/** Stateful downsampler: carries the fractional read position across 128-sample worklet chunks. */
+function makeDownsampler(fromRate) {
   const ratio = fromRate / TARGET_RATE
-  const out = new Int16Array(Math.floor(float32.length / ratio))
-  for (let i = 0; i < out.length; i++) {
-    const start = Math.floor(i * ratio)
-    const end = Math.min(float32.length, Math.floor((i + 1) * ratio))
-    let sum = 0
-    for (let j = start; j < end; j++) sum += float32[j]
-    const v = Math.max(-1, Math.min(1, sum / Math.max(1, end - start)))
-    out[i] = v < 0 ? v * 0x8000 : v * 0x7fff
+  let carry = new Float32Array(0)
+  let pos = 0 // fractional index into (carry + chunk)
+  return (chunk) => {
+    const input = new Float32Array(carry.length + chunk.length)
+    input.set(carry)
+    input.set(chunk, carry.length)
+    const out = []
+    while (pos + ratio <= input.length) {
+      const start = Math.floor(pos)
+      const end = Math.floor(pos + ratio)
+      let sum = 0
+      for (let j = start; j < end; j++) sum += input[j]
+      const v = Math.max(-1, Math.min(1, sum / Math.max(1, end - start)))
+      out.push(v < 0 ? v * 0x8000 : v * 0x7fff)
+      pos += ratio
+    }
+    const keepFrom = Math.floor(pos)
+    carry = input.slice(keepFrom)
+    pos -= keepFrom
+    return Int16Array.from(out)
   }
-  return out
 }
 
 /** Indian ringback: 400 Hz, 0.4 s on, 0.2 s off, 0.4 s on, 2 s off. */
@@ -64,6 +76,7 @@ export default function PhoneApp({ sessionId: initialId }) {
   const [voice, setVoice] = useState(true)
   const [draft, setDraft] = useState('')
   const [persona, setPersona] = useState('paatti')
+  const usedInitial = useRef(false)
   const refs = useRef({ ctx: null, ws: null, stream: null, node: null, sources: [], next: 0, stopRing: null, buf: [], bufLen: 0, muted: false, voice: true, rec: null })
   refs.current.muted = muted
 
@@ -138,7 +151,9 @@ export default function PhoneApp({ sessionId: initialId }) {
     r.stopRing = ringback(r.ctx)
     const ringUntil = Date.now() + 3000 // ring briefly so it feels like a real call
 
-    let id = initialId
+    // The QR session is single-use: a redial (or a dropped call) starts a fresh call.
+    let id = !usedInitial.current ? initialId : null
+    usedInitial.current = true
     if (!id) {
       try {
         const res = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'web-phone' }) })
@@ -158,6 +173,8 @@ export default function PhoneApp({ sessionId: initialId }) {
       r.stopRing?.()
       r.stopRing = null
       setPhase('connected')
+      setSeconds(0)
+      send({ type: 'answered' }) // server greets now, so its echo guard matches what we play
       pending.splice(0).forEach((fn) => fn())
     }
     const whenAnswered = (fn) => (r.stopRing ? pending.push(fn) : fn())
@@ -185,9 +202,10 @@ export default function PhoneApp({ sessionId: initialId }) {
     await r.ctx.audioWorklet.addModule(url)
     const srcNode = r.ctx.createMediaStreamSource(r.stream)
     const tap = new AudioWorkletNode(r.ctx, 'paatti-tap')
+    const downsample = makeDownsampler(r.ctx.sampleRate)
     tap.port.onmessage = (e) => {
+      const pcm = downsample(e.data)
       if (r.muted) return
-      const pcm = downsample(e.data, r.ctx.sampleRate)
       r.buf.push(pcm)
       r.bufLen += pcm.length
       if (r.bufLen >= TARGET_RATE / 10) { // ~100 ms per message

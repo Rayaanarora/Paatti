@@ -90,12 +90,33 @@ def test_vad_ignores_short_blips():
     assert all(e[0] != "utterance" for e in events)
 
 
-def test_vad_force_cuts_long_speech():
+def syllables(ms, rate=8000):
+    """Speech-like: 150 ms loud, 50 ms soft, repeated (levels vary like syllables)."""
+    out = b""
+    while len(out) < rate * ms // 1000 * 2:
+        out += tone(150, rate) + tone(50, rate, amp=600)
+    return out[: rate * ms // 1000 * 2]
+
+
+def test_vad_force_cuts_long_speech_and_keeps_listening():
     vad = VAD(rate=8000, max_utterance_ms=1000)
     events = []
-    for chunk in frames_of(tone(2500), 8000, 20):
+    for chunk in frames_of(syllables(3500), 8000, 20):
         events += vad.feed(chunk)
     assert sum(1 for e in events if e[0] == "utterance") >= 2
+
+
+def test_vad_learns_steady_noise_instead_of_hearing_it_forever():
+    vad = VAD(rate=8000, max_utterance_ms=2000)
+    events = []
+    for chunk in frames_of(tone(6000, amp=1000), 8000, 20):  # flat hum above the default threshold
+        events += vad.feed(chunk)
+    assert not any(e[0] == "utterance" for e in events)  # noise is never sent to speech-to-text
+    assert not vad.in_speech
+    after = []
+    for chunk in frames_of(tone(800, amp=9000) + silence(900), 8000, 20):  # real speech over it
+        after += vad.feed(chunk)
+    assert [e[0] for e in after].count("utterance") == 1
 
 
 def test_vad_reset_drops_partial():

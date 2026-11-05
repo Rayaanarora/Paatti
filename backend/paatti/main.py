@@ -6,6 +6,7 @@ import asyncio
 import base64
 import binascii
 import logging
+import os
 import secrets
 import time
 from pathlib import Path
@@ -45,6 +46,13 @@ class SessionIn(BaseModel):
 
 class DispatchIn(BaseModel):
     destination: Literal["bank_fraud_desk", "ncrp_1930"]
+
+
+def mask_number(n: str | None) -> str | None:
+    """+919876543210 -> +91******3210 for public listings."""
+    if not n or len(n) < 6:
+        return n
+    return n[:3] + "*" * (len(n) - 7) + n[-4:]
 
 
 DESTINATIONS = {
@@ -100,19 +108,32 @@ def create_app(
             "llm_pool": persona.backend.status() if hasattr(persona.backend, "status") else None,
         }
 
+    def is_operator(request: Request) -> bool:
+        tok = request.headers.get("X-Operator-Token") or request.query_params.get("token")
+        return bool(settings.operator_token and tok and secrets.compare_digest(tok, settings.operator_token))
+
     @app.get("/api/history")
-    def history() -> dict:
-        return {"calls": db.call_history(), "mule_registry": db.mule_registry(), "counts": db.counts()}
+    def history(request: Request) -> dict:
+        op = is_operator(request)
+        calls = db.call_history()
+        if not op:
+            for c in calls:
+                c["caller_id"] = mask_number(c["caller_id"])
+        return {"calls": calls, "mule_registry": db.mule_registry(), "counts": db.counts()}
 
     @app.get("/api/sessions")
-    def list_sessions() -> list[dict]:
-        return [
-            {k: v for k, v in s.snapshot().items() if k not in ("intel", "stage_history", "dispatches")}
-            for s in store.all()[:50]
-        ]
+    def list_sessions(request: Request) -> list[dict]:
+        op = is_operator(request)
+        out = []
+        for s in store.all()[:50]:
+            row = {k: v for k, v in s.snapshot().items() if k not in ("intel", "stage_history", "dispatches")}
+            if not op:
+                row["caller_id"] = mask_number(row["caller_id"])
+            out.append(row)
+        return out
 
     @app.post("/api/sessions", status_code=201)
-    def create_session(request: Request, body: SessionIn | None = None) -> dict:
+    async def create_session(request: Request, body: SessionIn | None = None) -> dict:
         limiter.check(request.client.host if request.client else "unknown")
         body = body or SessionIn()
         return service.create_session(persona_key=body.persona, channel=body.channel).snapshot()
@@ -132,13 +153,13 @@ def create_app(
         return {"scammer": s.turns[scammer_index].model_dump(mode="json"), "paatti": paatti, "state": s.snapshot()}
 
     @app.post("/api/sessions/{session_id}/end")
-    def end_session(session_id: str) -> dict:
+    async def end_session(session_id: str) -> dict:
         s = store.get(session_id)
         service.end(s)
         return s.snapshot()
 
     @app.post("/api/sessions/{session_id}/dispatch", status_code=201)
-    def dispatch(session_id: str, body: DispatchIn) -> dict:
+    async def dispatch(session_id: str, body: DispatchIn) -> dict:
         """MOCK hand-off of the report. Records what would be sent; contacts no one."""
         s = store.get(session_id)
         if len(s.dispatches) >= 10:
@@ -192,9 +213,11 @@ def create_app(
             return
         await ws.accept()
         q = hub.subscribe(s.id)
-        q.put_nowait({"type": "state", "state": s.snapshot()})
-        for t in s.turns:  # late joiners (projector following a phone call) get the history
-            q.put_nowait({"type": "turn", "turn": t.model_dump(mode="json")})
+        await ws.send_json({"type": "state", "state": s.snapshot()})
+        for t in list(s.turns):  # late joiners (projector following a phone call) get the history
+            await ws.send_json({"type": "turn", "turn": t.model_dump(mode="json")})
+        # Phone calls are driven by the phone; dashboards may only watch them.
+        read_only = s.channel != "web"
 
         async def pump() -> None:
             while True:
@@ -203,7 +226,10 @@ def create_app(
         sender = asyncio.create_task(pump())
 
         def reply(msg: dict) -> None:
-            q.put_nowait(msg)
+            try:
+                q.put_nowait(msg)
+            except asyncio.QueueFull:
+                pass
 
         try:
             while True:
@@ -212,12 +238,18 @@ def create_app(
                 if s.ended_at is not None and kind not in ("end", "tick"):
                     reply({"type": "error", "message": "call has ended"})
                     continue
+                if read_only and kind != "tick":
+                    reply({"type": "error", "message": "this is a phone call: watch only"})
+                    continue
                 if kind == "scammer_text":
                     text = str(msg.get("text", "")).strip()
                     if not text or len(text) > settings.max_turn_chars:
                         reply({"type": "error", "message": "text must be 1-2000 characters"})
                         continue
-                    await service.respond(s, text)
+                    try:
+                        await service.respond(s, text)
+                    except HTTPException as e:
+                        reply({"type": "error", "message": e.detail})
                 elif kind == "audio_chunk":
                     data = decode_b64(msg, settings.max_audio_bytes)
                     if data is None:
@@ -239,7 +271,11 @@ def create_app(
                         reply({"type": "notice", "message": f"speech-to-text failed: {e}; switch to text mode"})
                         continue
                     if text:
-                        paatti = await service.respond(s, text[: settings.max_turn_chars])
+                        try:
+                            paatti = await service.respond(s, text[: settings.max_turn_chars])
+                        except HTTPException as e:
+                            reply({"type": "error", "message": e.detail})
+                            continue
                         await _speak_to(reply, s, paatti["text"])
                 elif kind == "tick":
                     reply({"type": "state", "state": s.snapshot()})
@@ -290,17 +326,34 @@ def create_app(
                              send_audio=send_audio, clear_audio=clear_audio, barge_in=False, echo_guard=True)
             call.start()
         await send({"type": "connected", "voice": bool(sarvam), "persona": s.persona_key})
-        try:
+        greeted = False
+
+        async def greet() -> None:
+            nonlocal greeted
+            if greeted:
+                return
+            greeted = True
             if call:
-                await call.warm()
                 await call.greet()
             else:
                 turn = service.say(s, PROFILES[s.persona_key].greeting)
                 await send({"type": "paatti_text", "text": turn["text"], "lang": PROFILES[s.persona_key].language_code})
+
+        try:
+            if call:
+                await call.warm()
             while True:
-                msg = await ws.receive_json()
+                try:
+                    # The phone rings for a few seconds, then says "answered": greet then, so the
+                    # greeting plays when the echo guard expects it. Fallback: greet after 5 s.
+                    msg = await (ws.receive_json() if greeted else asyncio.wait_for(ws.receive_json(), 5))
+                except asyncio.TimeoutError:
+                    await greet()
+                    continue
                 kind = msg.get("type") if isinstance(msg, dict) else None
-                if kind == "pcm" and call:
+                if kind == "answered":
+                    await greet()
+                elif kind == "pcm" and call and greeted:
                     data = decode_b64(msg, 512 * 1024)
                     if data:
                         s.add_audio_chunk(data)
@@ -308,7 +361,10 @@ def create_app(
                 elif kind == "text":
                     text = str(msg.get("text", "")).strip()[: settings.max_turn_chars]
                     if text:
-                        paatti = await service.respond(s, text)
+                        try:
+                            paatti = await service.respond(s, text)
+                        except HTTPException:
+                            break
                         if call:
                             await call.play(paatti["text"])
                         else:
@@ -323,8 +379,10 @@ def create_app(
                 await call.close()
             service.end(s)
 
-    dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-    if dist.is_dir():
+    candidates = [Path(p) for p in (os.getenv("PAATTI_STATIC_DIR"),) if p]
+    candidates += [Path(__file__).resolve().parents[2] / "frontend" / "dist", Path.cwd().parent / "frontend" / "dist"]
+    dist = next((c for c in candidates if c.is_dir()), None)
+    if dist:
         app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
 
     return app

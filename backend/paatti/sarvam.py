@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import time
 
 import httpx
 
@@ -27,7 +28,17 @@ class SarvamClient:
         if not settings.sarvam_api_key:
             raise SarvamError("SARVAM_API_KEY not configured")
         self.settings = settings
+        self._day = time.strftime("%Y-%m-%d")
+        self.calls_today = 0
         self.http = http or httpx.AsyncClient(base_url=settings.sarvam_base_url, timeout=15)
+
+    def _spend(self) -> None:
+        today = time.strftime("%Y-%m-%d")
+        if today != self._day:
+            self._day, self.calls_today = today, 0
+        if self.calls_today >= self.settings.sarvam_daily_cap:
+            raise SarvamError("daily Sarvam cap reached")
+        self.calls_today += 1
 
     @property
     def _headers(self) -> dict[str, str]:
@@ -35,12 +46,16 @@ class SarvamClient:
 
     async def transcribe(self, audio: bytes, filename: str = "turn.wav", mime: str = "audio/wav") -> str:
         """Speech-to-text on one caller utterance (Tamil/English code-mixed)."""
-        resp = await self.http.post(
-            "/speech-to-text",
-            headers=self._headers,
-            files={"file": (filename, audio, mime)},
-            data={"model": self.settings.stt_model, "language_code": "unknown"},
-        )
+        self._spend()
+        try:
+            resp = await self.http.post(
+                "/speech-to-text",
+                headers=self._headers,
+                files={"file": (filename, audio, mime)},
+                data={"model": self.settings.stt_model, "language_code": "unknown"},
+            )
+        except httpx.HTTPError as e:  # network trouble must surface as SarvamError, never kill a call
+            raise SarvamError(f"speech-to-text unreachable ({type(e).__name__})") from e
         if resp.status_code != 200:
             log.warning("Sarvam STT HTTP %s", resp.status_code)
             raise SarvamError(f"speech-to-text failed ({resp.status_code})")
@@ -48,6 +63,7 @@ class SarvamClient:
 
     async def synthesize(self, text: str, language_code: str = "ta-IN", speaker: str | None = None) -> bytes:
         """Text-to-speech in a slow, elderly voice. Returns WAV bytes."""
+        self._spend()
         body = {
             "text": text[:1500],
             "target_language_code": language_code,
@@ -57,7 +73,10 @@ class SarvamClient:
         }
         if self.settings.tts_sample_rate:
             body["speech_sample_rate"] = self.settings.tts_sample_rate
-        resp = await self.http.post("/text-to-speech", headers=self._headers, json=body)
+        try:
+            resp = await self.http.post("/text-to-speech", headers=self._headers, json=body)
+        except httpx.HTTPError as e:
+            raise SarvamError(f"text-to-speech unreachable ({type(e).__name__})") from e
         if resp.status_code != 200:
             log.warning("Sarvam TTS HTTP %s", resp.status_code)
             raise SarvamError(f"text-to-speech failed ({resp.status_code})")
