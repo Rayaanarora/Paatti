@@ -9,8 +9,10 @@ the browser's built-in speech APIs handle the voice loop.
 from __future__ import annotations
 
 import base64
+import hashlib
 import logging
 import time
+from pathlib import Path
 
 import httpx
 
@@ -64,22 +66,40 @@ class SarvamClient:
     async def transcribe(self, audio: bytes, filename: str = "turn.wav", mime: str = "audio/wav") -> str:
         """Speech-to-text on one caller utterance (Tamil/English code-mixed)."""
         self._spend()
+        clean_mime = (mime or "audio/wav").split(";")[0].strip().lower()
+        if not filename or filename == "turn.wav":
+            if "webm" in clean_mime:
+                filename = "turn.webm"
+            elif "mp4" in clean_mime or "m4a" in clean_mime:
+                filename = "turn.mp4"
+            elif "ogg" in clean_mime or "opus" in clean_mime:
+                filename = "turn.ogg"
+            else:
+                filename = "turn.wav"
+
         try:
             resp = await self.http.post(
                 "/speech-to-text",
                 headers=self._headers,
-                files={"file": (filename, audio, mime)},
+                files={"file": (filename, audio, clean_mime)},
                 data=self._stt_fields(),
             )
         except httpx.HTTPError as e:  # network trouble must surface as SarvamError, never kill a call
             raise SarvamError(f"speech-to-text unreachable ({type(e).__name__})") from e
         if resp.status_code != 200:
-            log.warning("Sarvam STT HTTP %s", resp.status_code)
+            log.warning("Sarvam STT HTTP %s: %s", resp.status_code, resp.text)
             raise SarvamError(f"speech-to-text failed ({resp.status_code}{_detail(resp)})")
         return str(resp.json().get("transcript", "")).strip()
 
     async def synthesize(self, text: str, language_code: str = "ta-IN", speaker: str | None = None) -> bytes:
         """Text-to-speech in a slow, elderly voice. Returns WAV bytes."""
+        text_clean = text.strip()
+        h = hashlib.sha256(text_clean.encode()).hexdigest()[:16]
+        cache_file = Path(__file__).parent / "data" / "audio_cache" / f"{h}.wav"
+        if cache_file.exists():
+            log.info("⚡ Audio cache HIT (0ms): %s", text_clean[:40])
+            return cache_file.read_bytes()
+
         self._spend()
         body = {
             "text": text[:1500],
@@ -100,4 +120,10 @@ class SarvamClient:
         audios = resp.json().get("audios") or []
         if not audios:
             raise SarvamError("text-to-speech returned no audio")
-        return base64.b64decode(audios[0])
+        audio_bytes = base64.b64decode(audios[0])
+        try:
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            cache_file.write_bytes(audio_bytes)
+        except Exception:
+            pass
+        return audio_bytes

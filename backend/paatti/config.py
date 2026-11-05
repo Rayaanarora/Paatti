@@ -4,6 +4,16 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    # Load .env from backend/.env or repo root .env
+    for candidate in (Path(__file__).resolve().parents[1] / ".env", Path(__file__).resolve().parents[2] / ".env"):
+        if candidate.exists():
+            load_dotenv(candidate, override=False)
+except ImportError:
+    pass
 
 
 def _list(name: str, default: str) -> list[str]:
@@ -60,7 +70,7 @@ class Settings:
     tts_sample_rate: int | None = field(
         default_factory=lambda: int(v) if (v := os.getenv("SARVAM_TTS_SAMPLE_RATE", "")) else None
     )
-    tts_pace: float = field(default_factory=lambda: float(os.getenv("SARVAM_TTS_PACE", "0.8")))
+    tts_pace: float = field(default_factory=lambda: float(os.getenv("SARVAM_TTS_PACE", "1.2")))
 
     cors_origins: list[str] = field(
         default_factory=lambda: _list("PAATTI_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")

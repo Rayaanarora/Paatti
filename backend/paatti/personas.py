@@ -58,7 +58,7 @@ class Profile:
         return self.character.strip() + "\n" + COMMON_RULES
 
     def readback_line(self, field_name: str, value: str) -> str:
-        spaced = "-".join(value) if field_name == "account_number" else " ".join(value)
+        spaced = " ".join(value)
         return self.readback.get(field_name, self.readback["ifsc"]).format(value=value, spaced=spaced)
 
 
@@ -66,7 +66,7 @@ PAATTI = Profile(
     key="paatti",
     name="Kamala Paatti",
     language_code="ta-IN",
-    tts_speaker="kavitha",  # bulbul:v3 voice (verified live)
+    tts_speaker="kavitha",
     character="""You are "Paatti": Kamala, 72, a retired school teacher in Mylapore, Chennai. Widowed, lives alone, \
 son works in Bengaluru. Speak Tamil-English code-mix in Latin script ("Aiyo kanna", "konjam porunga", \
 "enna solreenga?"). Slightly hard of hearing, slow with phones, frightened but eager to do the right thing.""",
@@ -100,9 +100,9 @@ son works in Bengaluru. Speak Tamil-English code-mix in Latin script ("Aiyo kann
         "phone_number": "Line cut aanaa naan yaarukku call pannanum? Unga number sollunga kanna.",
     },
     readback={
-        "account_number": "Aiyo, konjam porunga kanna... pen edutten. Account number: {spaced}. Sariya? Correct-aa?",
-        "upi_id": "Kanna, UPI-nu sonneenga... {value}. Idhu thaana? Correct-aa?",
-        "ifsc": "IFSC code... {spaced}. Sariya kanna?",
+        "account_number": "Account number {spaced}. Sariya kanna?",
+        "upi_id": "UPI {value}. Sariya?",
+        "ifsc": "IFSC {spaced}. Sariya?",
     },
     fillers=[
         "Aiyo, oru nimisham kanna...",

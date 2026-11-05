@@ -5,14 +5,11 @@ import { IntelCards, StageTracker, TimeWasted, Transcript } from './components/P
 import { CHANNEL_LABEL } from './state.js'
 import { useCall } from './useCall.js'
 
-// One-click lines for rehearsing the demo without a second person.
+// One-click lines for fast 30-second live demo
 const DEMO_LINES = [
   'This is Inspector Rajesh Verma from CBI. Your Aadhaar is linked to a money-laundering case.',
-  'An arrest warrant is issued in your name. This is a digital arrest, you cannot disconnect.',
-  'Do not tell anyone in your family. Stay on this Skype call with camera on.',
-  'Transfer Rs 4,50,000 to the RBI safe account now. Note the number: 5021 0034 7781 9920.',
-  'Yes correct. IFSC is HDFC0001234.',
-  'Haan, correct. Or pay by UPI to rbi.verify@ybl',
+  'Transfer Rs 4,50,000 to the safe account now: 5021 0034 7781 9920.',
+  'Yes correct, IFSC is HDFC0001234. Transfer immediately.',
 ]
 
 export default function App() {
