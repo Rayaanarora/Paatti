@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { apiUrl, wsUrl } from './api.js'
 import { formatClock } from './state.js'
+import { Icon, initials } from './icons.jsx'
 
 // Mic capture runs in an AudioWorklet; frames are downsampled to 16 kHz PCM16 and
 // streamed to /ws/phone/:id, which runs the same voice pipeline as the phone line.
@@ -512,13 +513,13 @@ export default function PhoneApp({ sessionId: initialId }) {
   return (
     <div className={`phone ${phase}`}>
       <div className="wa-header">
-        <span className="wa-lock" aria-hidden="true">🔒</span>
+        <Icon name="lock" size={12} className="wa-lock" />
         <span>End-to-end encrypted</span>
       </div>
 
       <div className="phone-top">
         <div className="avatar-wrapper">
-          <div className="avatar" aria-hidden="true">{who.avatar}</div>
+          <div className="avatar" aria-hidden="true">{initials(name)}</div>
           {phase === 'connected' && <span className="avatar-live-badge">LIVE</span>}
         </div>
         <div className="phone-id">
@@ -540,7 +541,7 @@ export default function PhoneApp({ sessionId: initialId }) {
           <>
             {paattiSpeaking ? (
               <div className="turn-indicator speaking" role="status">
-                <span className="speaker-wave-pulse" aria-hidden="true">🔊</span>
+                <span className="speaker-wave-pulse"><Icon name="volume" size={18} /></span>
                 <div className="turn-text">
                   <strong>{name.split(' ').pop()} is speaking…</strong>
                   <span>Listen, then reply</span>
@@ -559,7 +560,7 @@ export default function PhoneApp({ sessionId: initialId }) {
             {subtitle && (
               <div className={`live-speech-bubble ${paattiSpeaking ? 'active' : 'idle'}`}>
                 <div className="speech-bubble-header">
-                  <span className="bubble-speaker">{who.avatar} {name}</span>
+                  <span className="bubble-speaker">{name}</span>
                   {paattiSpeaking && <span className="bubble-live-tag">Speaking</span>}
                 </div>
                 <p className="speech-bubble-content">“{subtitle}”</p>
@@ -572,7 +573,7 @@ export default function PhoneApp({ sessionId: initialId }) {
         {live && (
           <div className="phone-demo-sheet">
             <div className="demo-sheet-header">
-              <span>📋 Demo script</span>
+              <span className="demo-sheet-title"><Icon name="script" size={14} /> Demo script</span>
               <span className="demo-badge">Read aloud or tap</span>
             </div>
             <div className="demo-cards-list">
@@ -592,7 +593,7 @@ export default function PhoneApp({ sessionId: initialId }) {
                       <span className="script-target">{s.target}</span>
                     </div>
                     <p className="script-speech-text">“{s.line}”</p>
-                    <span className="script-tap-hint">{isDone ? '✓ Sent' : 'Tap to send'}</span>
+                    <span className="script-tap-hint">{isDone ? <><Icon name="check" size={12} /> Sent</> : 'Tap to send'}</span>
                   </button>
                 )
               })}
@@ -605,14 +606,14 @@ export default function PhoneApp({ sessionId: initialId }) {
         {phase === 'connected' && (!voice || noMic) && (
           <form className="phone-type" onSubmit={sendDraft}>
             <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Type what you say…" aria-label="Your line" />
-            <button aria-label="Send">➤</button>
+            <button aria-label="Send"><Icon name="send" size={18} /></button>
           </form>
         )}
 
         <div className="phone-actions">
           {(phase === 'idle' || phase === 'ended' || phase === 'error') && (
             <div className="action-col">
-              <button className="round call pulse-call" onClick={call} aria-label="Call">📞</button>
+              <button className="round call pulse-call" onClick={call} aria-label="Call"><Icon name="phone" size={28} /></button>
               <span className="btn-label-primary">{phase === 'idle' ? 'Call' : 'Call again'}</span>
             </div>
           )}
@@ -625,12 +626,12 @@ export default function PhoneApp({ sessionId: initialId }) {
                   aria-pressed={muted}
                   aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
                 >
-                  {muted ? '🔇' : '🎙️'}
+                  <Icon name={muted ? 'micOff' : 'mic'} size={24} />
                 </button>
                 <span className="btn-label">{muted ? 'Unmute' : 'Mute'}</span>
               </div>
               <div className="action-col">
-                <button className="round hang" onClick={() => hangup()} aria-label="End call">📞</button>
+                <button className="round hang" onClick={() => hangup()} aria-label="End call"><Icon name="phone" size={28} /></button>
                 <span className="btn-label end-label">End</span>
               </div>
             </>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Icon } from '../icons.jsx'
 import { INTEL_CARDS, STAGES, cardStatus, formatClock, liveSeconds, stageIndex } from '../state.js'
 
 export function Transcript({ turns, pendingReadback, speaking, personaName = 'Paatti' }) {
@@ -16,7 +17,10 @@ export function Transcript({ turns, pendingReadback, speaking, personaName = 'Pa
       </header>
       <div className="turns" role="log" aria-live="polite">
         {turns.length === 0 && (
-          <p className="empty-hint">Start a call, then speak or type as the scammer. Paatti answers in her own voice.</p>
+          <div className="empty-hint">
+            <p className="empty-title">No call on screen</p>
+            <p>Start a call, then speak or type as the scammer. Phone calls appear here on their own.</p>
+          </div>
         )}
         {turns.map((t) => (
           <div key={t.index} className={`bubble ${t.role}`}>
@@ -46,12 +50,12 @@ export function StageTracker({ stage, history }) {
         {STAGES.map((s, i) => {
           const status = i < current ? 'done' : i === current ? 'active' : 'todo'
           return (
-            <li key={s.key} className={`stage ${status}`}>
-              <span className="num">{i + 1}</span>
-              <div>
-                <div className="stage-label">{s.label}</div>
-                <div className="stage-hint">{at[s.key] !== undefined ? `reached ${formatClock(at[s.key])}` : s.hint}</div>
-              </div>
+            <li key={s.key} className={`stage ${status}`} aria-current={status === 'active' ? 'step' : undefined}>
+              <span className="node" aria-hidden="true">{status === 'done' ? <Icon name="check" size={12} /> : i + 1}</span>
+              <span className="stage-label">{s.label}</span>
+              {at[s.key] !== undefined
+                ? <span className="stage-hint at">at {formatClock(at[s.key])}</span>
+                : <span className="stage-hint">{s.hint}</span>}
             </li>
           )
         })}
@@ -60,44 +64,58 @@ export function StageTracker({ stage, history }) {
   )
 }
 
-const STATUS_TEXT = { empty: 'Waiting', captured: 'Read-back pending', locked: 'Locked' }
+const STATUS_TEXT = { empty: 'Waiting', captured: 'Read-back pending', locked: 'Captured' }
+
+function LedgerRow({ label, value, mono, status, badge, meta, quote }) {
+  return (
+    <li className={`ledger-row ${status}`} title={quote ? `"${quote}"` : undefined}>
+      <span className="ledger-label">{label}</span>
+      <span className={`ledger-value ${mono ? 'mono' : ''}`}>{value || '—'}</span>
+      <span className={`badge ${status}`}>
+        {status === 'locked' && <Icon name="check" size={12} />}
+        {badge}
+      </span>
+      {meta && <span className="ledger-meta">{meta}</span>}
+    </li>
+  )
+}
 
 export function IntelCards({ intel }) {
   const phones = intel.phone_numbers || []
   const apps = intel.apps_requested || []
+  const listStatus = (xs) => (xs.length ? 'locked' : 'empty')
   return (
     <section className="panel" aria-label="Intel captured">
-      <header className="panel-head"><h2>Intel captured</h2></header>
-      <div className="cards">
+      <header className="panel-head">
+        <h2>Intel captured</h2>
+        <span className="panel-note">Hover a value for the caller's exact words</span>
+      </header>
+      <ul className="ledger">
         {INTEL_CARDS.map((c) => {
           const f = intel[c.key]
           const status = cardStatus(c, f)
           return (
-            <article key={c.key} className={`card ${status}`} title={f ? `"${f.quote}"` : undefined}>
-              <div className="card-top">
-                <span className="card-label">{c.label}</span>
-                <span className={`badge ${status}`}>{c.readback && f?.confirmed ? 'Read-back confirmed' : STATUS_TEXT[status]}</span>
-              </div>
-              <div className={`card-value ${c.mono ? 'mono' : ''}`}>{f ? (c.format ? c.format(f.value) : f.value) : '—'}</div>
-              {f && (
-                <div className="card-meta">
-                  <span>conf {Math.round(f.confidence * 100)}%</span>
+            <LedgerRow
+              key={c.key}
+              label={c.label}
+              value={f ? (c.format ? c.format(f.value) : f.value) : null}
+              mono={c.mono}
+              status={status}
+              quote={f?.quote}
+              badge={c.readback && f?.confirmed ? 'Read-back confirmed' : STATUS_TEXT[status]}
+              meta={f && (
+                <>
+                  <span>{Math.round(f.confidence * 100)}% confidence</span>
                   <span>{f.source}</span>
                   {f.repeat_sessions?.length > 0 && <span className="repeat">seen in {f.repeat_sessions.length} earlier call(s)</span>}
-                </div>
+                </>
               )}
-            </article>
+            />
           )
         })}
-        <article className={`card ${phones.length ? 'locked' : 'empty'}`}>
-          <div className="card-top"><span className="card-label">Phone numbers</span></div>
-          <div className="card-value mono small">{phones.length ? phones.map((p) => p.value).join(', ') : '—'}</div>
-        </article>
-        <article className={`card ${apps.length ? 'locked' : 'empty'}`}>
-          <div className="card-top"><span className="card-label">Apps requested</span></div>
-          <div className="card-value small">{apps.length ? apps.map((a) => a.value).join(', ') : '—'}</div>
-        </article>
-      </div>
+        <LedgerRow label="Phone numbers" mono status={listStatus(phones)} value={phones.map((p) => p.value).join(', ')} badge={STATUS_TEXT[listStatus(phones)]} />
+        <LedgerRow label="Apps requested" status={listStatus(apps)} value={apps.map((a) => a.value).join(', ')} badge={STATUS_TEXT[listStatus(apps)]} />
+      </ul>
     </section>
   )
 }
@@ -110,9 +128,12 @@ export function TimeWasted({ state }) {
     return () => clearInterval(id)
   }, [state.sessionId, state.ended])
   return (
-    <div className="timer" aria-label="Scammer time wasted">
+    <div className={`timer ${state.sessionId && !state.ended ? 'live' : ''}`} aria-label="Scammer time wasted">
+      <div className="timer-label">
+        <span className="timer-title">Scammer time wasted</span>
+        <span className="timer-sub">{state.sessionId ? (state.ended ? 'Call ended' : 'Call in progress') : 'No call yet'}</span>
+      </div>
       <div className="timer-value">{formatClock(liveSeconds(state))}</div>
-      <div className="timer-label">scammer time wasted</div>
     </div>
   )
 }

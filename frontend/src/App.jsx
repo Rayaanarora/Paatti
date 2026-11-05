@@ -4,6 +4,7 @@ import { Dispatch, LiveCalls, PhoneDemo } from './components/Ops.jsx'
 import { IntelCards, StageTracker, TimeWasted, Transcript } from './components/Panels.jsx'
 import { CHANNEL_LABEL } from './state.js'
 import { useCall } from './useCall.js'
+import { Icon } from './icons.jsx'
 
 // The rehearsed demo script (docs/DEMO_SCRIPT.md); mirrors backend/paatti/demo.py CALLER_LINES.
 // Paatti's replies to these are pre-recorded, so the demo plays instantly.
@@ -39,16 +40,21 @@ export default function App() {
           <span className="logo" aria-hidden="true">P</span>
           <div>
             <h1>Paatti</h1>
-            <p className="tagline">Live call console</p>
+            <p className="tagline">Scam-call honeypot · live console</p>
           </div>
         </div>
         <div className="status">
           {health && (
-            <span className="pill" title="Backend modes">
-              persona: {health.persona} · extractor: {health.extractor} · voice: {health.voice}
+            <span className="modes" title="Backend modes">
+              <span>Persona <b>{health.persona}</b></span>
+              <span>Extractor <b>{health.extractor}</b></span>
+              <span>Voice <b>{health.voice}</b></span>
             </span>
           )}
-          <span className={`dot ${state.connected ? 'on' : ''}`} aria-label={state.connected ? 'Connected' : 'Not connected'} />
+          <span className={`conn ${state.connected ? 'on' : ''}`}>
+            <span className="dot" aria-hidden="true" />
+            {state.connected ? 'Connected' : 'Offline'}
+          </span>
         </div>
       </header>
 
@@ -139,10 +145,10 @@ export default function App() {
           <IntelCards intel={state.intel} />
           <section className="panel report" aria-label="Mule Intel Report">
             <header className="panel-head"><h2>Mule Intel Report</h2></header>
-            <p className="muted">Identifiers, verbatim evidence quotes, stage timeline, BNS 318–319, SHA-256 hash. Unconfirmed digits stay out of the NCRP fields.</p>
+            <p className="muted">Identifiers with the caller's exact words, the stage timeline, BNS 318–319 and a SHA-256 hash. Digits the caller never confirmed stay out of the NCRP fields.</p>
             <Dispatch state={state} onDispatched={(m) => call.dispatch({ type: 'notice', id: Date.now(), message: m })} />
             <div className="row">
-              <a className={`btn primary ${state.sessionId ? '' : 'disabled'}`} href={state.sessionId ? apiUrl(`/api/sessions/${state.sessionId}/report.pdf`) : undefined} aria-disabled={!state.sessionId}>Download PDF</a>
+              <a className={`btn primary ${state.sessionId ? '' : 'disabled'}`} href={state.sessionId ? apiUrl(`/api/sessions/${state.sessionId}/report.pdf`) : undefined} aria-disabled={!state.sessionId}><Icon name="download" size={16} /> Download PDF</a>
               <a className={`btn ${state.sessionId ? '' : 'disabled'}`} href={state.sessionId ? apiUrl(`/api/sessions/${state.sessionId}/report.json`) : undefined} aria-disabled={!state.sessionId}>JSON</a>
             </div>
           </section>
@@ -153,7 +159,7 @@ export default function App() {
         {state.notices.map((n) => (
           <div key={n.id} className={`toast ${n.kind}`}>
             <span>{n.message}</span>
-            <button aria-label="Dismiss" onClick={() => call.dispatch({ type: 'dismiss', id: n.id })}>×</button>
+            <button aria-label="Dismiss" onClick={() => call.dispatch({ type: 'dismiss', id: n.id })}><Icon name="x" size={16} /></button>
           </div>
         ))}
       </div>

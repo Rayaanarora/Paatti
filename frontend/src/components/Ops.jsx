@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { apiUrl } from '../api.js'
+import { Icon } from '../icons.jsx'
 import { CHANNEL_LABEL, formatClock, formatHms, goldenHourLeft } from '../state.js'
 
 /**
@@ -111,7 +112,7 @@ export function PhoneDemo({ health, onCreate }) {
             ))}
           </select>
         </label>
-        <button className="btn" onClick={makeQr}>Phone call via QR</button>
+        <button className="btn" onClick={makeQr}><Icon name="qr" size={16} /> Phone call via QR</button>
       </div>
       {qr && (
         <div className="qr">
