@@ -76,6 +76,10 @@ class Settings:
     # Pitch-preserving speed-up applied after synthesis (1.0 = off). 1.1-1.25 sounds natural.
     tts_speedup: float = field(default_factory=lambda: min(1.6, max(1.0, float(os.getenv("PAATTI_TTS_SPEEDUP", "1.15")))))
     tts_max_gap_ms: int = field(default_factory=lambda: int(os.getenv("PAATTI_TTS_MAX_GAP_MS", "120")))
+    # Make her sound like she is on a real phone call: 8 kHz narrowband, phone AGC, G.711 grain and a
+    # quiet room tone under her voice. Off (0) gives the clean studio voice.
+    phone_line: bool = field(default_factory=lambda: os.getenv("PAATTI_PHONE_LINE", "1") != "0")
+    line_noise_db: float = field(default_factory=lambda: max(-90.0, min(-30.0, float(os.getenv("PAATTI_LINE_NOISE_DB", "-52")))))
     audio_cache_dir: str | None = field(default_factory=lambda: os.getenv(
         "PAATTI_AUDIO_CACHE_DIR", str(Path(__file__).parent / "data" / "audio_cache")) or None)
     audio_cache_write: bool = field(default_factory=lambda: os.getenv("PAATTI_AUDIO_CACHE_WRITE", "1") != "0")

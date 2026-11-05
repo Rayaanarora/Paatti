@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { apiUrl, wsUrl } from './api.js'
 import { initialState, reducer } from './state.js'
+import { startLineNoise } from './lineNoise.js'
 
 
 const SpeechRecognition = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)
@@ -115,6 +116,7 @@ export function useCall() {
     try {
       a.ctx = a.ctx || new (window.AudioContext || window.webkitAudioContext)()
       if (a.ctx.state === 'suspended') await a.ctx.resume()
+      if (!a.stopLine) a.stopLine = startLineNoise(a.ctx) // open-line hiss between her sentences
       const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
       const buffer = await a.ctx.decodeAudioData(bytes.buffer)
       const src = a.ctx.createBufferSource()
@@ -336,7 +338,17 @@ export function useCall() {
     send({ type: 'end' })
   }, [send, stopListening])
 
+  // The line hiss belongs to a live, audible call only.
+  useEffect(() => {
+    const a = audioOut.current
+    if ((state.ended || !state.sessionId || muted) && a.stopLine) {
+      a.stopLine()
+      a.stopLine = null
+    }
+  }, [state.ended, state.sessionId, muted])
+
   useEffect(() => () => {
+    audioOut.current.stopLine?.()
     const l = link.current
     l.id = null
     clearTimeout(l.timer)

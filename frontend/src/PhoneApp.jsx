@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { apiUrl, wsUrl } from './api.js'
 import { formatClock } from './state.js'
 import { Icon, initials } from './icons.jsx'
+import { startLineNoise } from './lineNoise.js'
 
 // Mic capture runs in an AudioWorklet; frames are downsampled to 16 kHz PCM16 and
 // streamed to /ws/phone/:id, which runs the same voice pipeline as the phone line.
@@ -335,6 +336,7 @@ export default function PhoneApp({ sessionId: initialId }) {
     const r = refs.current
     r.stopRing?.()
     r.stopRing = null
+    if (!r.stopLine) r.stopLine = startLineNoise(r.ctx) // the open-line hiss of a real call
     setPhase('connected')
     send({ type: 'answered' }) // server greets now, so its echo guard matches what we play
     r.pending.splice(0).forEach((fn) => fn())
@@ -364,6 +366,7 @@ export default function PhoneApp({ sessionId: initialId }) {
         if (msg.name) setWho({ name: msg.name, tagline: msg.tagline || '', avatar: msg.avatar || '👵' })
         if (r.stream) setError('') // keep the no-mic note visible
         if (msg.resumed) {
+          if (!r.stopLine) r.stopLine = startLineNoise(r.ctx)
           setPhase('connected')
           send({ type: 'answered' })
         } else {
@@ -475,6 +478,8 @@ export default function PhoneApp({ sessionId: initialId }) {
     clearTimeout(r.retryTimer)
     r.stopRing?.()
     r.stopRing = null
+    r.stopLine?.()
+    r.stopLine = null
     r.pending = []
     clearAudio()
     try { r.rec?.stop() } catch { /* stopped */ }

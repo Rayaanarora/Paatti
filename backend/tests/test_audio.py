@@ -176,3 +176,44 @@ def test_time_stretch_noop_cases():
     assert time_stretch(pcm, 16000, 1.0) == pcm
     assert time_stretch(b"", 16000, 1.3) == b""
     assert time_stretch(pcm[:100], 16000, 1.3) == pcm[:100]  # too short to stretch
+
+
+def _band_energy(pcm, rate, lo, hi):
+    import numpy as np
+
+    x = np.frombuffer(pcm, dtype="<i2").astype(float)
+    spec = np.abs(np.fft.rfft(x)) ** 2
+    f = np.fft.rfftfreq(len(x), 1 / rate)
+    return spec[(f >= lo) & (f < hi)].sum()
+
+
+def test_phone_line_is_narrowband_8k_and_keeps_the_voice():
+    from paatti.audio import LINE_RATE, phone_line
+
+    rate = 22050
+    voice = tone(1000, rate, freq=1000)
+    out = phone_line(voice, rate, seed=3)
+    assert abs(len(out) / 2 / LINE_RATE - 1.15) < 0.02          # 1 s + 60 ms lead + 90 ms tail
+    assert rms(out) > 2000                                       # voice still loud and clear
+    assert _band_energy(out, LINE_RATE, 900, 1100) > 50 * _band_energy(out, LINE_RATE, 1500, 4000)
+
+
+def test_phone_line_cuts_low_rumble_and_adds_room_tone():
+    from paatti.audio import LINE_RATE, phone_line
+
+    rate = 16000
+    lo, hi = tone(1000, rate, amp=6000, freq=100), tone(1000, rate, amp=6000, freq=1000)
+    mixed = b"".join(struct.pack("<h", a + b) for a, b in zip(*(struct.unpack(f"<{len(lo) // 2}h", x) for x in (lo, hi))))
+    out = phone_line(mixed, rate, seed=1, noise_db=-120)
+    # equal at the input; the handset band leaves the 100 Hz hum far below the 1 kHz voice band
+    assert _band_energy(out, LINE_RATE, 80, 120) * 100 < _band_energy(out, LINE_RATE, 950, 1050)
+    quiet = phone_line(silence(500, rate), rate, seed=1)
+    assert 0 < rms(quiet) < 300                                  # a faint hiss, never dead digital silence
+
+
+def test_phone_line_empty_and_deterministic():
+    from paatti.audio import phone_line
+
+    assert phone_line(b"", 16000) == b""
+    a = phone_line(tone(200, 16000), 16000, seed=7)
+    assert a == phone_line(tone(200, 16000), 16000, seed=7)

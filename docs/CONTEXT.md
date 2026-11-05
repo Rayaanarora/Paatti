@@ -154,6 +154,8 @@ Three layers, tested by `evals/redteam.py`:
 
 **Speech speed:** Sarvam pace 2.0 (its maximum), pauses over 120 ms trimmed (`audio.compress_silence`), then a pitch-preserving 1.15x WSOLA time-stretch (`audio.time_stretch`, `PAATTI_TTS_SPEEDUP`). Read-backs are spoken in natural groups ("5 0 2 1, 0 0 3 4"; "H D F C, 0 0 0 1 2 3 4").
 
+**Sounds like a real phone call** (`audio.phone_line`, applied every time a clip is played, so the cache stays clean): the handset/network band-limit (300-3400 Hz) with a small earpiece presence bump, phone AGC and soft limiting, slow level drift as she moves the handset, a quiet room tone (band-limited pink noise with a faint ceiling-fan swish, `PAATTI_LINE_NOISE_DB`, default -52 dBFS), then 8 kHz G.711 mu-law, the real PSTN codec. It adds 14 ms for a 6 s clip, and the 8 kHz clips are about 3x smaller, so they also reach the phone faster. In the browser, `frontend/src/lineNoise.js` plays the same room tone for the whole call, so the gaps between her sentences sound like an open line. No dropouts or garbling are added on purpose: digits must stay perfectly clear for the read-back. `PAATTI_PHONE_LINE=0` gives the clean studio voice.
+
 ### 6.4 Gemini pool (`llm.py`) — "never hit the limit"
 - **Persona model chain (default order):** `gemini-3.5-flash, gemini-3.1-flash-lite, gemini-flash-latest, gemini-3.5-flash-lite, gemini-3.7-flash, gemini-3.8-flash, gemini-flash-lite-latest`.
 - **Extractor model chain:** Lite models first, so the persona keeps the main quota.

@@ -315,3 +315,89 @@ def time_stretch(pcm: bytes, rate: int, factor: float, frame_ms: int = 30, searc
     out, norm = out[:used], norm[:used]
     out = np.divide(out, norm, out=np.zeros_like(out), where=norm > 1e-3)
     return np.clip(out, -32768, 32767).astype("<i2").tobytes()
+
+
+LINE_RATE = 8000  # narrowband telephony: what a real mobile/landline call carries
+
+
+def _butter_mag(f, fc: float, order: int, high: bool):
+    import numpy as np
+
+    ratio = (fc / np.maximum(f, 1e-3)) if high else (f / fc)
+    return 1.0 / np.sqrt(1.0 + ratio ** (2 * order))
+
+
+def _shape(x, rate: int, presence: float = 0.0):
+    """Band-limit like a handset + network codec: 300-3400 Hz, soft skirts, optional earpiece bump."""
+    import numpy as np
+
+    n = len(x)
+    f = np.fft.rfftfreq(n, 1 / rate)
+    h = _butter_mag(f, 300, 3, True) * _butter_mag(f, 3400, 6, False)
+    if presence:
+        h = h * (1 + presence * np.exp(-((f - 2100) / 650) ** 2))
+    return np.fft.irfft(np.fft.rfft(x) * h, n)
+
+
+def _pink(n: int, rng):
+    import numpy as np
+
+    spec = np.fft.rfft(rng.standard_normal(n))
+    f = np.arange(len(spec), dtype=np.float64)
+    spec[1:] /= np.sqrt(f[1:])
+    spec[0] = 0
+    p = np.fft.irfft(spec, n)
+    return p / (np.sqrt(np.mean(p ** 2)) or 1.0)
+
+
+def phone_line(pcm: bytes, rate: int, *, noise_db: float = -52.0, seed: int | None = None,
+               lead_ms: int = 60, tail_ms: int = 90) -> bytes:
+    """Make a clean studio TTS clip sound like a voice on a real phone call. Returns PCM16 at LINE_RATE.
+
+    Chain, in the order a real call degrades a voice:
+      1. handset mic + network band-limit (300-3400 Hz) with a small earpiece presence bump
+      2. phone AGC: levelled loudness and gentle soft-clip compression
+      3. slow level drift, as the speaker's mouth moves relative to the handset
+      4. room tone under the voice: band-limited pink noise with a faint ceiling-fan swish
+      5. G.711 mu-law at 8 kHz, the actual codec of the PSTN, for its grain
+    No dropouts or garbling are added: account numbers and IFSC codes must stay perfectly clear.
+    """
+    import numpy as np
+
+    s = np.frombuffer(pcm[: len(pcm) - len(pcm) % 2], dtype="<i2").astype(np.float64) / 32768.0
+    if not len(s):
+        return pcm
+    rng = np.random.default_rng(seed)
+    # to 8 kHz first (linear interpolation after the band-limit below 4 kHz is clean enough)
+    x = _shape(s, rate, presence=0.3)
+    n_out = max(1, int(len(x) * LINE_RATE / rate))
+    x = np.interp(np.arange(n_out) * (rate / LINE_RATE), np.arange(len(x)), x)
+    pad_l, pad_r = LINE_RATE * lead_ms // 1000, LINE_RATE * tail_ms // 1000
+    x = np.concatenate([np.zeros(pad_l), x, np.zeros(pad_r)])
+    n = len(x)
+    t = np.arange(n) / LINE_RATE
+
+    # AGC: bring the loud (voiced) part to about -20 dBFS, then soft-clip like a phone's limiter
+    frame = LINE_RATE // 50
+    env = np.sqrt(np.convolve(x ** 2, np.ones(frame) / frame, mode="same"))
+    voiced = env[env > (env.max() * 0.1 if env.max() > 0 else 1)]
+    if len(voiced):
+        x = x * (0.1 / (np.sqrt(np.mean(voiced ** 2)) or 1.0))
+    drive = 1.8
+    x = np.tanh(x * drive) / np.tanh(drive)
+
+    # mouth-to-handset drift: +-1.2 dB, slow
+    drift = 10 ** ((1.2 * np.sin(2 * np.pi * rng.uniform(0.25, 0.5) * t + rng.uniform(0, 6.3))) / 20)
+    x = x * drift
+
+    # room tone: pink noise through the same band, with a ~5 Hz fan-blade swish
+    if noise_db > -120:
+        bed = _shape(_pink(n, rng), LINE_RATE)
+        bed = bed / (np.sqrt(np.mean(bed ** 2)) or 1.0) * 10 ** (noise_db / 20)
+        bed = bed * (1 + 0.18 * np.sin(2 * np.pi * rng.uniform(4.6, 5.8) * t))
+        x = x + bed
+
+    q = np.clip(np.round(x * 32767), -32768, 32767).astype(np.int64)
+    enc = np.frombuffer(_ENCODE, dtype=np.uint8)[q + 32768]
+    dec = np.asarray(_DECODE, dtype=np.int16)[enc]
+    return dec.astype("<i2").tobytes()

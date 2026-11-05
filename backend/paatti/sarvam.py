@@ -18,7 +18,7 @@ from pathlib import Path
 import httpx
 
 from .config import Settings
-from .audio import compress_silence, pcm_from_wav, time_stretch, wav_from_pcm
+from .audio import LINE_RATE, compress_silence, pcm_from_wav, time_stretch, wav_from_pcm, phone_line
 from .speech import normalize_for_tts
 
 log = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ class SarvamClient:
         text = normalize_for_tts(text)  # '...' -> short pause: natural pacing
         cached = self.cached(text, language_code, speaker)
         if cached is not None:
-            return cached
+            return self._on_line(cached)
 
         self._spend()
         body = {
@@ -128,7 +128,18 @@ class SarvamClient:
             raise SarvamError("text-to-speech returned no audio")
         audio_bytes = self._tighten(base64.b64decode(audios[0]))
         self._store(text, language_code, speaker, audio_bytes)
-        return audio_bytes
+        return self._on_line(audio_bytes)
+
+    def _on_line(self, wav: bytes) -> bytes:
+        """Put the clean clip on a 'phone line' (applied on every play, so the cache stays clean and
+        the room tone is fresh each time)."""
+        if not self.settings.phone_line:
+            return wav
+        try:
+            pcm, rate = pcm_from_wav(wav)
+            return wav_from_pcm(phone_line(pcm, rate, noise_db=self.settings.line_noise_db), LINE_RATE)
+        except (EOFError, ValueError, wave.Error):
+            return wav
 
     def _tighten(self, wav: bytes) -> bytes:
         """Make the clip sound like natural, quick speech: cut long pauses, then speed it up with a

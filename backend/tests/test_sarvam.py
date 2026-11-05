@@ -12,7 +12,7 @@ from paatti.sarvam import SarvamClient, SarvamError
 
 def make_client(handler, raw=True):
     # raw=True: no post-processing, so tests can compare exact bytes. Processing has its own test.
-    settings = Settings(sarvam_api_key="test-key", **({"tts_speedup": 1.0, "tts_max_gap_ms": 0} if raw else {}))
+    settings = Settings(sarvam_api_key="test-key", phone_line=False, **({"tts_speedup": 1.0, "tts_max_gap_ms": 0} if raw else {}))
     http = httpx.AsyncClient(base_url="https://sarvam.test", transport=httpx.MockTransport(handler))
     return SarvamClient(settings, http=http)
 
@@ -106,7 +106,7 @@ async def test_speech_is_fast_by_default_and_pace_is_clamped(monkeypatch):
         return httpx.Response(200, json={"audios": [base64.b64encode(FAKE_WAV).decode()]})
 
     monkeypatch.delenv("SARVAM_TTS_PACE", raising=False)  # ignore any local .env
-    c = SarvamClient(Settings(sarvam_api_key="k", audio_cache_dir=None, tts_speedup=1.0, tts_max_gap_ms=0),
+    c = SarvamClient(Settings(sarvam_api_key="k", audio_cache_dir=None, tts_speedup=1.0, tts_max_gap_ms=0, phone_line=False),
                      http=httpx.AsyncClient(base_url="https://s.test", transport=httpx.MockTransport(handler)))
     await c.synthesize("Aiyo kanna")
     assert seen["pace"] == 2.0  # Bulbul v3's fastest
@@ -127,11 +127,11 @@ async def test_unknown_persona_voice_falls_back_to_default_speaker():
             return httpx.Response(400, json={"error": {"message": "invalid speaker"}})
         return httpx.Response(200, json={"audios": [base64.b64encode(FAKE_WAV).decode()]})
 
-    c = SarvamClient(Settings(sarvam_api_key="k", audio_cache_dir=None, tts_speedup=1.0, tts_max_gap_ms=0),
+    c = SarvamClient(Settings(sarvam_api_key="k", audio_cache_dir=None, tts_speedup=1.0, tts_max_gap_ms=0, phone_line=False),
                      http=httpx.AsyncClient(base_url="https://s.test", transport=httpx.MockTransport(handler)))
     assert await c.synthesize("Namaskara", language_code="kn-IN", speaker="ritu") == FAKE_WAV
     assert speakers == ["ritu", "kavitha"]
-    failing = SarvamClient(Settings(sarvam_api_key="k", audio_cache_dir=None, tts_speedup=1.0, tts_max_gap_ms=0), http=httpx.AsyncClient(
+    failing = SarvamClient(Settings(sarvam_api_key="k", audio_cache_dir=None, tts_speedup=1.0, tts_max_gap_ms=0, phone_line=False), http=httpx.AsyncClient(
         base_url="https://s.test", transport=httpx.MockTransport(lambda r: httpx.Response(400, json={}))))
     with pytest.raises(SarvamError):  # the default voice itself failing is still an error
         await failing.synthesize("x", speaker="kavitha")
@@ -150,3 +150,22 @@ async def test_synthesized_audio_has_long_pauses_removed():
     pcm, out_rate = pcm_from_wav(await c.synthesize("Aiyo kanna, oru nimisham"))
     # 2.0 s (with a 1 s pause) -> pause cut to 0.12 s, then 1.15x time-stretch -> ~0.97 s
     assert out_rate == rate and 0.8 < len(pcm) / 2 / rate < 1.1
+
+
+async def test_synthesize_puts_voice_on_a_phone_line():
+    import math
+    import struct
+
+    from paatti.audio import LINE_RATE, pcm_from_wav, rms
+    from paatti.config import Settings
+
+    rate = 22050
+    tone = struct.pack(f"<{rate}h", *(int(9000 * math.sin(2 * math.pi * 220 * i / rate)) for i in range(rate)))
+    wav = wav_from_pcm(tone, rate)
+    settings = Settings(sarvam_api_key="k", tts_speedup=1.0, tts_max_gap_ms=0, audio_cache_dir=None)
+    http = httpx.AsyncClient(base_url="https://sarvam.test", transport=httpx.MockTransport(
+        lambda r: httpx.Response(200, json={"audios": [base64.b64encode(wav).decode()]})))
+    pcm, out_rate = pcm_from_wav(await SarvamClient(settings, http=http).synthesize("Hello kanna"))
+    assert out_rate == LINE_RATE                      # narrowband, like a real call
+    assert 1.0 < len(pcm) / 2 / LINE_RATE < 1.25      # same length plus a short room-tone lead/tail
+    assert rms(pcm[:2 * LINE_RATE // 25]) > 0         # lead-in is quiet room tone, not digital silence
