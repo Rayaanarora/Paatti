@@ -564,3 +564,36 @@ async def test_refused_speech_to_text_switches_the_phone_to_on_device_recognitio
     await call.handle_utterance(silence(500, 8000))
     await call.handle_utterance(silence(500, 8000))
     assert switched == [True] and call.stt_local     # told once, not on every utterance
+
+
+def _dashboard(sarvam):
+    from paatti.config import Settings as _S
+
+    app = create_app(_S(), sarvam=sarvam)
+    app.state.warm_interval_s = 0
+    return app
+
+
+def _until(ws, kinds, limit=40):
+    for _ in range(limit):
+        m = ws.receive_json()
+        if m["type"] in kinds:
+            return m
+    raise AssertionError(f"none of {kinds}")
+
+
+def test_dashboard_typed_line_is_spoken_in_sarvam_voice_mode():
+    with TestClient(_dashboard(FakeSarvam())) as c:
+        sid = c.post("/api/sessions", json={"persona": "paatti"}).json()["session_id"]
+        with c.websocket_connect(f"/ws/sessions/{sid}") as ws:
+            ws.send_json({"type": "scammer_text", "text": "This is CBI calling", "speak": True})
+            assert _until(ws, {"paatti_audio"})["format"] == "wav"
+
+
+def test_dashboard_falls_back_to_browser_voice_when_sarvam_refuses():
+    with TestClient(_dashboard(FakeSarvam(fail_tts=True))) as c:
+        sid = c.post("/api/sessions", json={"persona": "paatti"}).json()["session_id"]
+        with c.websocket_connect(f"/ws/sessions/{sid}") as ws:
+            ws.send_json({"type": "scammer_text", "text": "This is CBI calling", "speak": True})
+            m = _until(ws, {"speak_text", "paatti_audio"})
+            assert m["type"] == "speak_text" and m["text"] and m["lang"] == "ta-IN"

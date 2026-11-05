@@ -307,7 +307,10 @@ def create_app(
                         reply({"type": "error", "message": "text must be 1-2000 characters"})
                         continue
                     try:
-                        await service.respond(s, text)
+                        if msg.get("speak") and sarvam:  # dashboard in Sarvam voice mode: say it aloud
+                            await _speak_streaming(reply, s, text)
+                        else:
+                            await service.respond(s, text)
                     except HTTPException as e:
                         reply({"type": "error", "message": e.detail})
                 elif kind == "audio_chunk":
@@ -458,7 +461,25 @@ def create_app(
                     yield item
                     item = await sentences.get()
 
-            await speak_stream(stream(), sarvam, profile.language_code, profile.tts_speaker, send)
+            heard: list[str] = []
+            done = {"end": False}
+
+            async def tracked():
+                async for item in stream():
+                    heard.append(item)
+                    yield item
+                done["end"] = True
+
+            try:
+                await speak_stream(tracked(), sarvam, profile.language_code, profile.tts_speaker, send)
+            except SarvamError:
+                # Sarvam refused (rate limit, credits): the browser speaks her line instead.
+                while not done["end"]:
+                    item = await sentences.get()
+                    if item is None:
+                        break
+                    heard.append(item)
+                reply({"type": "speak_text", "text": " ".join(heard), "lang": profile.language_code})
         except (SarvamError, ValueError) as e:
             reply({"type": "notice", "message": f"voice output unavailable: {e}"})
         finally:

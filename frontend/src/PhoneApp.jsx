@@ -168,6 +168,31 @@ function EndSummary({ summary }) {
   )
 }
 
+// A tiny silent WAV. Playing it from the Call tap puts iOS in "playback" mode, so Web Audio is
+// not muted by the ringer/silent switch.
+const SILENT_WAV = 'data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA=='
+
+/** Must run inside the Call tap: iOS only unlocks audio and speech from a user gesture. */
+function unlockIosAudio(r) {
+  try {
+    if (!r.silent) {
+      r.silent = new Audio(SILENT_WAV)
+      r.silent.loop = true
+      r.silent.setAttribute('playsinline', '')
+    }
+    r.silent.play().catch(() => {})
+  } catch { /* no media element */ }
+  try {
+    // Prime speech synthesis so the fallback voice may speak later, outside a tap.
+    if (window.speechSynthesis && !r.speechPrimed) {
+      const u = new SpeechSynthesisUtterance(' ')
+      u.volume = 0
+      window.speechSynthesis.speak(u)
+      r.speechPrimed = true
+    }
+  } catch { /* no speech synthesis */ }
+}
+
 const ECHO_TAIL_S = 0.35 // keep the mic closed this long after Paatti's audio ends
 const MAX_RETRIES = 6
 const PING_MS = 15000
@@ -312,7 +337,14 @@ export default function PhoneApp({ sessionId: initialId }) {
     if (!window.speechSynthesis) return
     setPaattiSpeaking(true)
     const u = new SpeechSynthesisUtterance(text)
-    u.lang = lang || 'ta-IN'
+    // Phones rarely have a Tamil/Punjabi voice; her lines are romanised, so an Indian-English
+    // voice reads them well. Without a matching voice iOS can stay silent.
+    const want = lang || 'ta-IN'
+    const voices = window.speechSynthesis.getVoices() || []
+    const pick = voices.find((v) => v.lang === want) || voices.find((v) => v.lang === 'en-IN')
+      || voices.find((v) => v.lang?.startsWith('en'))
+    if (pick) u.voice = pick
+    u.lang = pick?.lang || want
     u.rate = 1.3
     u.pitch = 0.9
     u.onend = u.onerror = () => setPaattiSpeaking(false)
@@ -328,6 +360,7 @@ export default function PhoneApp({ sessionId: initialId }) {
     setError('')
     setSummary(null)
     const r = refs.current
+    unlockIosAudio(r)
     try {
       r.ctx = new (window.AudioContext || window.webkitAudioContext)()
       await r.ctx.resume()
@@ -555,6 +588,7 @@ export default function PhoneApp({ sessionId: initialId }) {
     r.stopRing = null
     r.stopLine?.()
     r.stopLine = null
+    try { r.silent?.pause() } catch { /* gone */ }
     if (r.wasLive) disconnectTone(r.ctx)
     r.wasLive = false
     r.pending = []

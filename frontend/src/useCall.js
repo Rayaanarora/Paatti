@@ -81,6 +81,20 @@ export function useCall() {
     if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify(msg))
   }, [])
 
+  // Sarvam refused her voice: say the line with the browser's own voice so the demo isn't silent.
+  const speakFallback = (text) => {
+    if (live.current.muted || !window.speechSynthesis || !text) return
+    const u = new SpeechSynthesisUtterance(text)
+    const voice = pickVoice()
+    if (voice) u.voice = voice
+    u.lang = voice?.lang || 'en-IN'
+    u.rate = 1.2
+    u.pitch = 0.85
+    setSpeaking(true)
+    u.onend = u.onerror = () => setSpeaking(false)
+    window.speechSynthesis.speak(u)
+  }
+
   const speak = useCallback((text) => {
     if (live.current.muted || live.current.voiceMode === 'text' || !window.speechSynthesis) return
     const u = new SpeechSynthesisUtterance(text)
@@ -198,6 +212,7 @@ export function useCall() {
         if (msg.turn.role === 'paatti' && live.current.voiceMode === 'browser' && snap.channel === 'web') speak(msg.turn.text)
       } else if (msg.type === 'state') dispatch({ type: 'state', state: msg.state })
       else if (msg.type === 'paatti_audio' && live.current.voiceMode === 'server') playWav(msg.data)
+      else if (msg.type === 'speak_text') speakFallback(msg.text)
       else if (msg.type === 'notice') notice(msg.message, 'warn')
       else if (msg.type === 'error') notice(msg.message, 'error')
     }
@@ -234,7 +249,7 @@ export function useCall() {
 
   const sayAsScammer = useCallback((text) => {
     const t = text.trim()
-    if (t) send({ type: 'scammer_text', text: t })
+    if (t) send({ type: 'scammer_text', text: t, speak: live.current.voiceMode === 'server' && !live.current.muted })
   }, [send])
 
   // ---- browser voice: Web Speech recognition + mic recording for the audio hash
