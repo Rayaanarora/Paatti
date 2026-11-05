@@ -109,7 +109,7 @@ async def test_speech_is_fast_by_default_and_pace_is_clamped(monkeypatch):
     c = SarvamClient(Settings(sarvam_api_key="k", audio_cache_dir=None, tts_speedup=1.0, tts_max_gap_ms=0, phone_line=False),
                      http=httpx.AsyncClient(base_url="https://s.test", transport=httpx.MockTransport(handler)))
     await c.synthesize("Aiyo kanna")
-    assert seen["pace"] == 2.0  # Bulbul v3's fastest
+    assert seen["pace"] == 0.9  # a little slower than normal: an elderly speaker
     monkeypatch.setenv("SARVAM_TTS_PACE", "3.5")
     assert Settings().tts_pace == 2.0
     monkeypatch.setenv("SARVAM_TTS_PACE", "0.1")
@@ -150,8 +150,8 @@ async def test_synthesized_audio_has_long_pauses_removed():
     c = SarvamClient(settings, http=httpx.AsyncClient(base_url="https://sarvam.test", transport=httpx.MockTransport(
         lambda r: httpx.Response(200, json={"audios": [base64.b64encode(slow).decode()]}))))
     pcm, out_rate = pcm_from_wav(await c.synthesize("Aiyo kanna, oru nimisham"))
-    # 2.0 s (with a 1 s pause) -> pause cut to 0.12 s, then 1.15x time-stretch -> ~0.97 s
-    assert out_rate == rate and 0.8 < len(pcm) / 2 / rate < 1.1
+    # 2.0 s (with a 1 s pause) -> pause cut to 0.3 s, then 1.15x time-stretch -> ~1.13 s (uncut: ~1.74 s)
+    assert out_rate == rate and 0.95 < len(pcm) / 2 / rate < 1.3
 
 
 async def test_synthesize_puts_voice_on_a_phone_line():
@@ -256,6 +256,6 @@ def test_blank_numeric_settings_fall_back_instead_of_crashing(monkeypatch):
     for name in ("SARVAM_TTS_PACE", "PAATTI_TTS_SPEEDUP", "PAATTI_SARVAM_RPM", "SARVAM_DAILY_CAP", "PAATTI_LINE_NOISE_DB"):
         monkeypatch.setenv(name, "")
     s = Settings()
-    assert s.tts_pace == 2.0 and s.sarvam_rpm == 20 and s.sarvam_daily_cap == 2000
+    assert s.tts_pace == 0.9 and s.sarvam_rpm == 20 and s.sarvam_daily_cap == 2000
     monkeypatch.setenv("SARVAM_TTS_PACE", "fast")
-    assert Settings().tts_pace == 2.0
+    assert Settings().tts_pace == 0.9

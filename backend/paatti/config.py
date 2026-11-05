@@ -96,7 +96,7 @@ class Settings:
     # Longest pause kept inside a synthesised clip (ms). Shorter = snappier speech; 0 = off.
     # Pitch-preserving speed-up applied after synthesis (1.0 = off). 1.1-1.25 sounds natural.
     tts_speedup: float = field(default_factory=lambda: min(1.6, max(1.0, _env_num("PAATTI_TTS_SPEEDUP", "1.0", float))))
-    tts_max_gap_ms: int = field(default_factory=lambda: _env_num("PAATTI_TTS_MAX_GAP_MS", "120", int))
+    tts_max_gap_ms: int = field(default_factory=lambda: _env_num("PAATTI_TTS_MAX_GAP_MS", "300", int))
     # Make her sound like she is on a real phone call: 8 kHz narrowband, phone AGC, G.711 grain and a
     # quiet room tone under her voice. Off (0) gives the clean studio voice.
     phone_line: bool = field(default_factory=lambda: os.getenv("PAATTI_PHONE_LINE", "0") == "1")
@@ -104,7 +104,7 @@ class Settings:
     audio_cache_dir: str | None = field(default_factory=lambda: os.getenv(
         "PAATTI_AUDIO_CACHE_DIR", str(Path(__file__).parent / "data" / "audio_cache")) or None)
     audio_cache_write: bool = field(default_factory=lambda: os.getenv("PAATTI_AUDIO_CACHE_WRITE", "1") != "0")
-    tts_pace: float = field(default_factory=lambda: min(2.0, max(0.5, _env_num("SARVAM_TTS_PACE", "2.0", float))))
+    tts_pace: float = field(default_factory=lambda: min(2.0, max(0.5, _env_num("SARVAM_TTS_PACE", "0.9", float))))
 
     cors_origins: list[str] = field(
         default_factory=lambda: _list("PAATTI_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
