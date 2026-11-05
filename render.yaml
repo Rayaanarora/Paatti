@@ -14,7 +14,11 @@ services:
       - key: PAATTI_PUBLIC_URL
         sync: false          # e.g. https://paatti.onrender.com (needed for Twilio + QR)
       - key: PAATTI_CORS_ORIGINS
-        value: ""
+        value: "https://paatti-app.vercel.app"   # the Vercel dashboard
+      - key: PAATTI_CORS_ORIGIN_REGEX
+        value: "https://[a-z0-9-]*paatti[a-z0-9-]*\\.vercel\\.app"   # Vercel preview URLs
+      - key: PAATTI_REPLY_CACHE_WRITE
+        value: "0"
       - key: PAATTI_OPERATOR_TOKEN
         generateValue: true
       - key: TWILIO_ACCOUNT_SID
