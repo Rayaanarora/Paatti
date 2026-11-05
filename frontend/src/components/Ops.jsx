@@ -3,11 +3,17 @@ import QRCode from 'qrcode'
 import { apiUrl } from '../api.js'
 import { CHANNEL_LABEL, formatClock, formatHms, goldenHourLeft } from '../state.js'
 
-/** Live and recent calls; auto-follows new phone calls onto this screen. */
-export function LiveCalls({ currentId, onOpen }) {
+/**
+ * Live and recent calls. Auto-follow puts a phone call on this screen when it starts, and also
+ * when this screen is idle (just opened, or showing an ended call) while a phone call is live,
+ * so a laptop opened after the phone dialled still catches the call.
+ */
+export function LiveCalls({ currentId, currentLive = false, onOpen }) {
   const [calls, setCalls] = useState([])
   const [follow, setFollow] = useState(true)
   const seen = useRef(null)
+  const current = useRef({ id: currentId, live: currentLive })
+  current.current = { id: currentId, live: currentLive }
 
   useEffect(() => {
     let alive = true
@@ -18,8 +24,10 @@ export function LiveCalls({ currentId, onOpen }) {
         const list = await r.json()
         setCalls(list)
         const ids = new Set(list.map((c) => c.session_id))
-        if (seen.current && follow) {
-          const fresh = list.find((c) => !seen.current.has(c.session_id) && c.channel !== 'web' && !c.ended)
+        if (follow) {
+          const cur = current.current
+          const fresh = list.find((c) => c.channel !== 'web' && !c.ended && c.session_id !== cur.id
+            && (!cur.live || (seen.current && !seen.current.has(c.session_id))))
           if (fresh) onOpen(fresh.session_id)
         }
         seen.current = ids
@@ -111,7 +119,11 @@ export function PhoneDemo({ health, onCreate }) {
           <div>
             <p className="muted small">Scan with the judge's phone. The call screen opens; tap Call and play the scammer.</p>
             <a className="small" href={link} target="_blank" rel="noreferrer">{link}</a>
-            {!health?.public_url && <p className="muted small">Phones need HTTPS for the mic: open this dashboard through your tunnel URL.</p>}
+            {/^https?:\/\/(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(link) ? (
+              <p className="small warn-text" role="alert">A phone can't open a localhost link. Start Paatti with start.bat / start.sh (it makes a public https link), or open this dashboard through your tunnel URL.</p>
+            ) : link.startsWith('http://') ? (
+              <p className="small warn-text" role="alert">This is an http link: the phone's mic needs https. The call still works by tapping the lines.</p>
+            ) : null}
           </div>
         </div>
       )}

@@ -125,3 +125,14 @@ Already built in, nothing to do:
 - [ ] One full rehearsal call (QR or Twilio) done today
 - [ ] Phone volume up, not on silent; Do Not Disturb on for notifications
 - [ ] Fallback ready: dashboard text mode and the backup video
+
+## Phone won't connect or the laptop doesn't update
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Dashboard says "Backend not reachable" | The page is only the dashboard (e.g. the Vercel site) and no backend is running | Run `start.bat` / `start.sh` and open the link it prints |
+| Dashboard shows a yellow warning under the QR | The QR points at `localhost`, which a phone can't open | Open the dashboard through the public https link from the launcher (not localhost) |
+| Phone shows "Tap a line" instead of using the mic | Page opened over http, mic blocked, or a QR scanner's in-app browser | Open the https link in Chrome or Safari and allow the mic; the call still works by tapping |
+| Phone scanned an old QR | The server restarted, so that call no longer exists | Nothing: the phone starts a fresh call by itself and the laptop picks it up |
+| Laptop opened after the phone dialled | — | The laptop now joins the live phone call within 2 s (keep "Auto-follow phone calls" ticked) |
+| Laptop and phone on different links | Each server has its own calls | Open the same launcher link on both |

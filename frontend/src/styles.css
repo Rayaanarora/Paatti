@@ -256,3 +256,4 @@ h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: v
 .phone-type input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 12px; border: 0; background: rgba(255,255,255,.1); color: #fff; font: inherit; font-size: 16px; }
 .phone-type button { border: 0; border-radius: 12px; padding: 0 14px; background: #25d366; color: #0c1317; font-weight: 700; cursor: pointer; }
 .phone-foot { font-size: 11px; color: #8696a0; margin: 0; }
+.warn-text { color: var(--warn); font-weight: 600; }

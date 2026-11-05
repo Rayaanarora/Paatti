@@ -129,7 +129,7 @@ export default function App() {
               </details>
             )}
           </section>
-          <LiveCalls currentId={state.sessionId} onOpen={call.attach} />
+          <LiveCalls currentId={state.sessionId} currentLive={active} onOpen={call.attach} />
           <PhoneDemo health={health} onCreate={call.create} />
         </div>
 

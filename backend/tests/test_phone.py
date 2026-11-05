@@ -456,3 +456,49 @@ async def test_slow_reply_gets_exactly_one_filler_before_it(monkeypatch):
     fillers = [t for t in sarvam.spoken if t in call.profile.fillers]
     assert fillers == [sarvam.spoken[0]]       # one filler, first
     assert len(sent) >= 2                      # then the reply
+
+
+# ---- audit fixes: connection errors reach the browser, REST respects watch-only ----------
+
+@pytest.mark.parametrize("path", ["/ws/phone/missing", "/ws/sessions/missing"])
+def test_unknown_call_closes_with_4404_the_browser_can_see(path):
+    from starlette.websockets import WebSocketDisconnect
+
+    c = TestClient(create_app(Settings()))
+    with c.websocket_connect(path) as ws:  # accepted first, so the close code is delivered
+        with pytest.raises(WebSocketDisconnect) as e:
+            ws.receive_json()
+    assert e.value.code == 4404
+
+
+def test_ended_phone_call_closes_with_4404():
+    from starlette.websockets import WebSocketDisconnect
+
+    app = create_app(Settings())
+    c = TestClient(app)
+    sid = c.post("/api/sessions", json={"channel": "web-phone"}).json()["session_id"]
+    app.state.service.end(app.state.store.get(sid))
+    with c.websocket_connect(f"/ws/phone/{sid}") as ws:
+        with pytest.raises(WebSocketDisconnect) as e:
+            ws.receive_json()
+    assert e.value.code == 4404
+
+
+def test_rest_api_cannot_drive_or_end_a_phone_call():
+    app = create_app(Settings())
+    c = TestClient(app)
+    sid = c.post("/api/sessions", json={"channel": "web-phone"}).json()["session_id"]
+    assert c.post(f"/api/sessions/{sid}/turn", json={"text": "This is CBI"}).status_code == 403
+    assert c.post(f"/api/sessions/{sid}/end").status_code == 403
+    assert app.state.store.get(sid).ended_at is None and not app.state.store.get(sid).turns
+    web = c.post("/api/sessions", json={"channel": "web"}).json()["session_id"]
+    assert c.post(f"/api/sessions/{web}/turn", json={"text": "This is CBI"}).status_code == 200
+    assert c.post(f"/api/sessions/{web}/end").status_code == 200
+
+
+def test_single_call_view_masks_the_caller_number_without_operator_token():
+    app = create_app(twilio_settings(operator_token="op"), sarvam=FakeSarvam())
+    c = TestClient(app)
+    s = app.state.service.create_session(channel="phone", caller_id="+919876543210")
+    assert c.get(f"/api/sessions/{s.id}").json()["caller_id"] == "+91******3210"
+    assert c.get(f"/api/sessions/{s.id}", headers={"X-Operator-Token": "op"}).json()["caller_id"] == "+919876543210"

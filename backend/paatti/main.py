@@ -151,13 +151,22 @@ def create_app(
         return service.create_session(persona_key=body.persona, channel=body.channel).snapshot()
 
     @app.get("/api/sessions/{session_id}")
-    def get_session(session_id: str) -> dict:
+    def get_session(session_id: str, request: Request) -> dict:
         s = store.get(session_id)
-        return {**s.snapshot(), "turns": [t.model_dump(mode="json") for t in s.turns]}
+        snap = s.snapshot()
+        if not is_operator(request):
+            snap["caller_id"] = mask_number(snap["caller_id"])
+        return {**snap, "turns": [t.model_dump(mode="json") for t in s.turns]}
+
+    def drivable(s) -> None:
+        """Phone calls are driven by the phone; the REST API, like dashboards, may only watch them."""
+        if s.channel != "web":
+            raise HTTPException(status_code=403, detail="this is a phone call: watch only")
 
     @app.post("/api/sessions/{session_id}/turn")
     async def post_turn(session_id: str, body: TurnIn) -> dict:
         s = store.get(session_id)
+        drivable(s)
         if s.ended_at is not None:
             raise HTTPException(status_code=409, detail="call has ended")
         scammer_index = len(s.turns)
@@ -167,6 +176,7 @@ def create_app(
     @app.post("/api/sessions/{session_id}/end")
     async def end_session(session_id: str) -> dict:
         s = store.get(session_id)
+        drivable(s)
         service.end(s)
         return s.snapshot()
 
@@ -220,10 +230,10 @@ def create_app(
     @app.websocket("/ws/sessions/{session_id}")
     async def call_socket(ws: WebSocket, session_id: str) -> None:
         s = store.find(session_id)
+        await ws.accept()  # accept first so the browser receives the 4404 code (not a bare 1006)
         if s is None:
-            await ws.close(code=4404)
+            await ws.close(code=4404, reason="call not found")
             return
-        await ws.accept()
         q = hub.subscribe(s.id)
         await ws.send_json({"type": "state", "state": s.snapshot()})
         for t in list(s.turns):  # late joiners (projector following a phone call) get the history
@@ -405,10 +415,10 @@ def create_app(
     @app.websocket("/ws/phone/{session_id}")
     async def phone_socket(ws: WebSocket, session_id: str) -> None:
         s = store.find(session_id)
+        await ws.accept()  # accept first so the phone receives the 4404 code and can start a fresh call
         if s is None or s.ended_at is not None:
-            await ws.close(code=4404)
+            await ws.close(code=4404, reason="call not found or ended")
             return
-        await ws.accept()
         link = phone_links.setdefault(s.id, {"greeted": False, "gen": 0, "end_task": None})
         if link["end_task"]:  # the phone came back inside the grace period
             link["end_task"].cancel()

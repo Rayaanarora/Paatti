@@ -119,6 +119,7 @@ export default function PhoneApp({ sessionId: initialId }) {
   const [seconds, setSeconds] = useState(0)
   const [muted, setMuted] = useState(false)
   const [voice, setVoice] = useState(true)
+  const [noMic, setNoMic] = useState(false)
   const [draft, setDraft] = useState('')
   const [who, setWho] = useState({ name: 'Kamala Paatti', tagline: 'Retired Teacher · Mylapore, Chennai', avatar: '👵' })
   const [subtitle, setSubtitle] = useState('')
@@ -162,6 +163,7 @@ export default function PhoneApp({ sessionId: initialId }) {
       fetch(apiUrl('/api/health')).then((r) => (r.ok ? r.json() : null)),
     ]).then(([snap, health]) => {
       const p = health?.personas?.find((x) => x.key === snap?.persona)
+      if (snap?.persona) refs.current.persona = snap.persona
       if (p) setWho({ name: p.name, tagline: p.tagline || '', avatar: p.avatar || '👵' })
     }).catch(() => { /* keep the default card */ })
   }, [initialId])
@@ -273,18 +275,20 @@ export default function PhoneApp({ sessionId: initialId }) {
       setPhase('error')
       return
     }
+    // No mic is not fatal: the call still runs, the caller taps the script lines or types.
+    // (Mic needs HTTPS, and some in-app browsers, e.g. a QR scanner's, have none.)
+    r.stream = null
+    let micNote = ''
     if (!navigator.mediaDevices?.getUserMedia) {
-      setError('Microphone needs HTTPS. Open this page through the https:// link.')
-      setPhase('error')
-      return
+      micNote = 'No microphone here (it needs the https:// link in Chrome or Safari). Tap the lines or type instead.'
+    } else {
+      try {
+        r.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+      } catch {
+        micNote = 'Microphone is blocked. Allow it in the browser settings, or tap the lines / type instead.'
+      }
     }
-    try {
-      r.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
-    } catch {
-      setError('Microphone permission was denied.')
-      setPhase('error')
-      return
-    }
+    setNoMic(!r.stream)
     setPhase('ringing')
     setSubtitle('')
     setBeatsSent(0)
@@ -296,23 +300,34 @@ export default function PhoneApp({ sessionId: initialId }) {
     // The QR session is single-use: a redial starts a fresh call.
     let id = !usedInitial.current ? initialId : null
     usedInitial.current = true
-    if (!id) {
-      try {
-        const res = await fetch(apiUrl('/api/sessions'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'web-phone' }) })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        id = (await res.json()).session_id
-      } catch {
-        setError('Could not reach Paatti. Check the connection.')
-        setPhase('error')
-        r.stopRing?.()
-        return
-      }
-    }
+    if (!id) id = await newSession()
+    if (!id) return
     r.id = id
     r.hungUp = false
     r.retries = 0
+    r.everConnected = false
+    r.freshTried = false
     r.mediaStarted = false
+    if (micNote) setError(micNote)
     openSocket(id)
+  }
+
+  /** Start a brand-new call on the server (redial, or the QR's call no longer exists). */
+  const newSession = async () => {
+    const r = refs.current
+    try {
+      const res = await fetch(apiUrl('/api/sessions'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: 'web-phone', persona: r.persona || undefined }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return (await res.json()).session_id
+    } catch {
+      setError('Could not reach Paatti. Check that the laptop server is running and this link is current.')
+      setPhase('error')
+      r.stopRing?.()
+      return null
+    }
   }
 
   const answer = () => {
@@ -341,10 +356,12 @@ export default function PhoneApp({ sessionId: initialId }) {
       const msg = JSON.parse(ev.data)
       if (msg.type === 'connected') {
         r.retries = 0
+        r.everConnected = true
+        r.persona = msg.persona
         r.voice = msg.voice
         setVoice(msg.voice)
         if (msg.name) setWho({ name: msg.name, tagline: msg.tagline || '', avatar: msg.avatar || '👵' })
-        setError('')
+        if (r.stream) setError('') // keep the no-mic note visible
         if (msg.resumed) {
           setPhase('connected')
           send({ type: 'answered' })
@@ -353,8 +370,9 @@ export default function PhoneApp({ sessionId: initialId }) {
         }
         if (!r.mediaStarted) {
           r.mediaStarted = true
-          if (msg.voice) startStreaming().catch(() => setError('Microphone streaming failed; tap the script cards instead.'))
-          else startRecognition()
+          if (!r.stream) { /* tap / type only */ } else if (msg.voice) {
+            startStreaming().catch(() => { setNoMic(true); setError('Microphone streaming failed; tap the lines or type instead.') })
+          } else startRecognition()
         }
       } else if (msg.type === 'audio') {
         whenAnswered(() => playWav(msg.data))
@@ -380,9 +398,20 @@ export default function PhoneApp({ sessionId: initialId }) {
       if (r.ws !== ws) return
       clearInterval(r.ping)
       if (r.hungUp) return end()
+      if (ev.code === 4404 && !r.everConnected && !r.freshTried) {
+        // The QR's call is gone (server restarted or the call already ended): start a new one.
+        r.freshTried = true
+        newSession().then((fresh) => {
+          if (!fresh || r.hungUp) return
+          r.id = fresh
+          openSocket(fresh)
+        })
+        return
+      }
       if (ev.code === 4404 || r.retries >= MAX_RETRIES) {
         r.hungUp = true
-        if (ev.code !== 4404) setError('Call dropped. Tap Call to start again.')
+        setError(ev.code === 4404 ? 'This call has ended. Tap Call to start a new one.'
+          : 'Lost the connection to Paatti. Check the internet, then tap Call to start again.')
         return end()
       }
       // Dropped (network blip, screen lock): rejoin the same call; the server holds it for 30 s.
@@ -521,8 +550,8 @@ export default function PhoneApp({ sessionId: initialId }) {
               <div className="turn-indicator your-turn" role="status">
                 <span className="mic-dot pulse" aria-hidden="true"></span>
                 <div className="turn-text">
-                  <strong>{muted ? 'Mic muted' : 'Your turn: speak now'}</strong>
-                  <span>Read step {nextBeat + 1} aloud, or tap it</span>
+                  <strong>{noMic ? 'Your turn: tap a line' : muted ? 'Mic muted' : 'Your turn: speak now'}</strong>
+                  <span>{noMic ? `Tap step ${nextBeat + 1}, or type below` : `Read step ${nextBeat + 1} aloud, or tap it`}</span>
                 </div>
               </div>
             )}
@@ -573,7 +602,7 @@ export default function PhoneApp({ sessionId: initialId }) {
       </div>
 
       <div className="phone-bottom">
-        {phase === 'connected' && !voice && (
+        {phase === 'connected' && (!voice || noMic) && (
           <form className="phone-type" onSubmit={sendDraft}>
             <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Type what you say…" aria-label="Your line" />
             <button aria-label="Send">➤</button>
