@@ -16,6 +16,15 @@ Built for BeyondHack 2.0 (SRM IST).
 | [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) | **The live demo script**: eight scammer lines, Paatti's replies, what to point at |
 | [docs/ROUNDS.md](docs/ROUNDS.md) | Round-by-round checklist, 5-minute script, judge Q&A |
 
+## Start everything with one click
+
+Needs [Python 3.11+](https://www.python.org/downloads/) and [Node.js LTS](https://nodejs.org/).
+
+- **Windows:** double-click `start.bat`
+- **Mac / Linux:** run `./start.sh`
+
+It installs everything, starts Paatti, creates a public HTTPS link (so the phone mic works) and opens it in your browser. Open that link on the laptop, click **Phone call via QR**, and scan with the phone. Keep the window open during the demo. Optional keys for AI replies and real voice go in `.env` (created on the first run).
+
 ## Features
 
 | | |

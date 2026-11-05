@@ -11,3 +11,4 @@ frontend/dist/
 evals/results/
 backend/data/
 backend/paatti/data/audio_cache/
+.tools/
