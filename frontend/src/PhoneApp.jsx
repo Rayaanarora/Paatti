@@ -49,24 +49,37 @@ function makeDownsampler(fromRate) {
   }
 }
 
-/** Indian ringback: 400 Hz, 0.4 s on, 0.2 s off, 0.4 s on, 2 s off. */
+/** WhatsApp-style outgoing ringback tone: dual 440 Hz + 480 Hz chime with smooth envelope. */
 function ringback(ctx) {
-  const gain = ctx.createGain()
-  gain.gain.value = 0
-  gain.connect(ctx.destination)
-  const osc = ctx.createOscillator()
-  osc.frequency.value = 400
-  osc.connect(gain)
-  osc.start()
-  const t0 = ctx.currentTime
-  for (let i = 0; i < 6; i++) {
-    const t = t0 + i * 3
-    gain.gain.setValueAtTime(0.15, t)
-    gain.gain.setValueAtTime(0, t + 0.4)
-    gain.gain.setValueAtTime(0.15, t + 0.6)
-    gain.gain.setValueAtTime(0, t + 1.0)
+  let stopped = false
+  const playPulse = () => {
+    if (stopped) return
+    try {
+      const now = ctx.currentTime
+      const osc1 = ctx.createOscillator()
+      const osc2 = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc1.frequency.value = 440
+      osc2.frequency.value = 480
+      gain.gain.setValueAtTime(0, now)
+      gain.gain.linearRampToValueAtTime(0.12, now + 0.1)
+      gain.gain.setValueAtTime(0.12, now + 1.2)
+      gain.gain.linearRampToValueAtTime(0, now + 1.4)
+      osc1.connect(gain)
+      osc2.connect(gain)
+      gain.connect(ctx.destination)
+      osc1.start(now)
+      osc2.start(now)
+      osc1.stop(now + 1.5)
+      osc2.stop(now + 1.5)
+    } catch { /* audio context might be closed */ }
   }
-  return () => { try { osc.stop() } catch { /* already stopped */ } gain.disconnect() }
+  playPulse()
+  const interval = setInterval(playPulse, 3200)
+  return () => {
+    stopped = true
+    clearInterval(interval)
+  }
 }
 
 export default function PhoneApp({ sessionId: initialId }) {
@@ -267,23 +280,36 @@ export default function PhoneApp({ sessionId: initialId }) {
   return (
     <div className={`phone ${phase}`}>
       <div className="wa-header">
-        <span className="wa-lock">🔒</span> WhatsApp Voice Call · End-to-end encrypted
+        <span className="wa-back">〈</span>
+        <div className="wa-header-center">
+          <span className="wa-lock">🔒</span>
+          <span>WhatsApp Voice Call · End-to-end encrypted</span>
+        </div>
+        <span className="wa-user-add">👤⁺</span>
       </div>
 
       <div className="phone-top">
-        <div className="avatar" aria-hidden="true">{name[0]}</div>
-        <h1>{name}</h1>
-        <p className="phone-subtitle">Retired Teacher · Mylapore</p>
+        <div className="avatar-wrapper">
+          <div className="avatar" aria-hidden="true">👵</div>
+          {phase === 'connected' && <span className="avatar-live-badge">LIVE</span>}
+        </div>
+        <h1 className="contact-name">{name}</h1>
+        <p className="phone-subtitle">Retired Teacher · Mylapore, Chennai</p>
         <p className="phone-status">
-          {phase === 'idle' && 'Ready to call'}
-          {phase === 'ringing' && 'Calling…'}
+          {phase === 'idle' && 'Tap Call to start'}
+          {phase === 'ringing' && 'Ringing…'}
           {phase === 'connected' && formatClock(seconds)}
           {phase === 'ended' && `Call ended · ${formatClock(seconds)}`}
           {phase === 'error' && 'Call failed'}
         </p>
+
         {phase === 'connected' && (
           <div className="live-mic-banner">
-            <span className="mic-dot"></span> Mic Live · Speak to Paatti
+            <span className="mic-dot"></span>
+            <div className="mic-banner-text">
+              <strong>MIC IS LIVE</strong>
+              <span>Speak normally into phone mic (no buttons needed)</span>
+            </div>
           </div>
         )}
         {error && <p className="phone-error">{error}</p>}
@@ -291,15 +317,30 @@ export default function PhoneApp({ sessionId: initialId }) {
 
       {phase === 'connected' && (
         <div className="phone-demo-sheet">
-          <p className="demo-sheet-label">Or Tap Script Line:</p>
+          <div className="demo-sheet-header">
+            <span>📋 JUDGE DEMO SCRIPT</span>
+            <span className="demo-badge">Read aloud or Tap</span>
+          </div>
           <button type="button" className="sheet-btn" onClick={() => send({ type: 'text', text: 'This is Inspector Rajesh Verma from CBI. Your Aadhaar is linked to a money-laundering case.' })}>
-            1. "This is CBI. Aadhaar case..."
+            <span className="step-num">1</span>
+            <div className="step-content">
+              <strong>"This is CBI Inspector Verma..."</strong>
+              <small>Accuse victim of money laundering</small>
+            </div>
           </button>
           <button type="button" className="sheet-btn" onClick={() => send({ type: 'text', text: 'Transfer Rs 4,50,000 to the safe account now: 5021 0034 7781 9920.' })}>
-            2. "Transfer Rs 4.5L to safe account..."
+            <span className="step-num">2</span>
+            <div className="step-content">
+              <strong>"Transfer Rs 4,50,000 to safe account..."</strong>
+              <small>Demand transfer to mule account 5021 0034 7781 9920</small>
+            </div>
           </button>
           <button type="button" className="sheet-btn" onClick={() => send({ type: 'text', text: 'Yes correct, IFSC is HDFC0001234. Transfer immediately.' })}>
-            3. "Yes correct, IFSC HDFC0001234..."
+            <span className="step-num">3</span>
+            <div className="step-content">
+              <strong>"Yes correct, IFSC is HDFC0001234..."</strong>
+              <small>Confirm read-back & lock evidentiary report</small>
+            </div>
           </button>
         </div>
       )}
@@ -314,26 +355,40 @@ export default function PhoneApp({ sessionId: initialId }) {
       <div className="phone-actions">
         {(phase === 'idle' || phase === 'ended' || phase === 'error') && (
           <div className="action-col">
-            <button className="round call" onClick={call} aria-label="Call">📞</button>
-            <span className="btn-label">Call Paatti</span>
+            <button className="round call pulse-call" onClick={call} aria-label="Call">📞</button>
+            <span className="btn-label-primary">Call Paatti</span>
           </div>
         )}
         {(phase === 'ringing' || phase === 'connected') && (
           <>
             <div className="action-col">
-              <button className={`round ghost ${muted ? 'on' : ''}`} onClick={() => setMuted((m) => !m)} aria-pressed={muted} aria-label="Mute">
+              <button
+                className={`round ghost ${muted ? 'muted-on' : ''}`}
+                onClick={() => setMuted((m) => !m)}
+                aria-pressed={muted}
+                aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
+              >
                 {muted ? '🔇' : '🎙️'}
               </button>
-              <span className="btn-label">{muted ? 'Unmute' : 'Mute'}</span>
+              <span className="btn-label">{muted ? 'Unmute' : 'Mute Mic'}</span>
+              <span className="btn-sublabel">{muted ? 'Muted' : 'Live'}</span>
             </div>
             <div className="action-col">
               <button className="round hang" onClick={() => hangup()} aria-label="End call">📞</button>
-              <span className="btn-label">End Call</span>
+              <span className="btn-label end-label">End Call</span>
+              <span className="btn-sublabel">&nbsp;</span>
+            </div>
+            <div className="action-col">
+              <button className="round ghost speaker-btn" aria-label="Speaker" onClick={() => {}}>
+                🔊
+              </button>
+              <span className="btn-label">Speaker</span>
+              <span className="btn-sublabel">On</span>
             </div>
           </>
         )}
       </div>
-      <p className="phone-foot">Paatti Honeypot Line · Tamil Voice Active</p>
+      <p className="phone-foot">Paatti AI Honeypot · Real-time Laptop Sync Active</p>
     </div>
   )
 }

@@ -152,35 +152,65 @@ h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: v
 .golden { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--warn-bg); }
 .dispatch-log { margin: 0; padding-left: 18px; font-size: 13px; }
 
-/* ---- mobile call screen ---- */
-.phone-mode body { background: #0e1512; }
-.wa-header { font-size: 11px; color: #8696a0; display: flex; align-items: center; gap: 5px; margin-bottom: 8px; font-weight: 500; letter-spacing: 0.02em; }
+/* ---- mobile call screen (WhatsApp Voice Call theme) ---- */
+.phone-mode body { background: #0c1317; margin: 0; }
+.phone { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 18px 16px 20px; color: #f4f1ea; background: radial-gradient(130% 90% at 50% 0%, #152c24 0%, #0c1317 70%); text-align: center; box-sizing: border-box; }
+
+.wa-header { width: 100%; display: flex; justify-content: space-between; align-items: center; color: #8696a0; font-size: 11px; font-weight: 500; margin-bottom: 12px; }
+.wa-back { font-size: 20px; cursor: pointer; padding: 0 4px; color: #e9edef; }
+.wa-header-center { display: flex; align-items: center; gap: 6px; }
 .wa-lock { font-size: 10px; }
-.phone-subtitle { font-size: 13px; color: #8696a0; margin-top: -6px; }
-.live-mic-banner { display: inline-flex; align-items: center; gap: 6px; background: rgba(37, 211, 102, 0.15); border: 1px solid rgba(37, 211, 102, 0.4); color: #25d366; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 20px; margin-top: 6px; }
-.mic-dot { width: 8px; height: 8px; border-radius: 50%; background: #25d366; animation: pulse 1s infinite alternate; }
-@keyframes pulse { from { opacity: 0.4; } to { opacity: 1; transform: scale(1.15); } }
-.action-col { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.btn-label { font-size: 11px; color: #8696a0; font-weight: 500; }
-.phone-demo-sheet { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 340px; margin: 12px 0; }
-.demo-sheet-label { font-size: 11px; color: #8696a0; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-bottom: 2px; }
-.sheet-btn { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12); color: #e9edef; font-size: 12px; padding: 8px 12px; border-radius: 10px; cursor: pointer; text-align: left; transition: background 0.15s; }
-.sheet-btn:hover, .sheet-btn:active { background: rgba(37, 211, 102, 0.2); border-color: #25d366; }
-.phone { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 32px 16px 20px; color: #f4f1ea; background: radial-gradient(120% 80% at 50% 0%, #122822 0%, #0b141a 75%); text-align: center; }
-.phone-top { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.avatar { width: 96px; height: 96px; border-radius: 50%; background: #b4532a; display: grid; place-items: center; font-size: 42px; font-weight: 700; box-shadow: 0 0 0 8px rgba(255,255,255,.06); }
-.phone.ringing .avatar { animation: ring 1.2s infinite; }
-@keyframes ring { 50% { box-shadow: 0 0 0 18px rgba(255,255,255,.04); } }
-.phone h1 { font-size: 28px; font-weight: 600; }
-.phone-status { color: #b9c7bf; font-family: var(--mono); letter-spacing: .04em; }
-.phone-error { color: #ffb4a8; max-width: 300px; }
-.phone-actions { display: flex; gap: 36px; align-items: center; margin-bottom: 8px; }
-.round { width: 72px; height: 72px; border-radius: 50%; border: 0; font-size: 28px; cursor: pointer; display: grid; place-items: center; }
-.round.call { background: #2fae62; }
-.round.hang { background: #e0483b; transform: rotate(135deg); }
-.round.ghost { background: rgba(255,255,255,.12); }
-.round.ghost.on { background: #f4f1ea; }
-.phone-type { display: flex; gap: 8px; width: 100%; max-width: 360px; }
-.phone-type input { flex: 1; min-width: 0; padding: 12px; border-radius: 12px; border: 0; background: rgba(255,255,255,.1); color: #fff; font: inherit; }
-.phone-type button { border: 0; border-radius: 12px; padding: 0 14px; background: #2fae62; color: #fff; }
-.phone-foot { font-size: 12px; color: #7f8f87; }
+.wa-user-add { font-size: 16px; opacity: 0.7; }
+
+.phone-top { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; }
+.avatar-wrapper { position: relative; margin-top: 4px; }
+.avatar { width: 100px; height: 100px; border-radius: 50%; background: linear-gradient(135deg, #b4532a, #78350f); display: grid; place-items: center; font-size: 48px; box-shadow: 0 8px 24px rgba(0,0,0,0.4), 0 0 0 4px rgba(255,255,255,0.06); }
+.phone.ringing .avatar { animation: ring 1.4s infinite; }
+@keyframes ring { 50% { box-shadow: 0 8px 24px rgba(0,0,0,0.4), 0 0 0 16px rgba(37, 211, 102, 0.25); } }
+.avatar-live-badge { position: absolute; bottom: 0; right: 2px; background: #25d366; color: #0c1317; font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 10px; letter-spacing: 0.05em; border: 2px solid #0c1317; }
+
+.contact-name { font-size: 24px; font-weight: 600; color: #e9edef; margin: 4px 0 0; }
+.phone-subtitle { font-size: 13px; color: #8696a0; margin: 0; }
+.phone-status { color: #25d366; font-family: var(--mono); font-size: 14px; letter-spacing: .04em; margin: 2px 0 0; }
+.phone.ended .phone-status { color: #8696a0; }
+.phone.error .phone-status { color: #ffb4a8; }
+.phone-error { color: #ffb4a8; font-size: 13px; max-width: 320px; margin: 4px 0 0; }
+
+.live-mic-banner { display: flex; align-items: center; gap: 10px; background: rgba(37, 211, 102, 0.12); border: 1px solid rgba(37, 211, 102, 0.35); color: #25d366; padding: 8px 14px; border-radius: 12px; margin-top: 8px; text-align: left; max-width: 330px; }
+.live-mic-banner .mic-dot { width: 10px; height: 10px; border-radius: 50%; background: #25d366; flex: none; animation: pulse 1s infinite alternate; }
+.mic-banner-text { display: flex; flex-direction: column; gap: 2px; }
+.mic-banner-text strong { font-size: 12px; letter-spacing: 0.04em; color: #25d366; }
+.mic-banner-text span { font-size: 11px; color: #aebac1; font-weight: 400; line-height: 1.25; }
+
+/* Demo quick buttons sheet */
+.phone-demo-sheet { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 340px; margin: 10px 0; }
+.demo-sheet-header { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #8696a0; font-weight: 600; padding: 0 4px; }
+.demo-badge { background: rgba(255, 255, 255, 0.1); color: #e9edef; font-size: 9px; padding: 2px 6px; border-radius: 8px; font-weight: 500; }
+.sheet-btn { display: flex; align-items: center; gap: 10px; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); color: #e9edef; padding: 8px 10px; border-radius: 10px; cursor: pointer; text-align: left; transition: all 0.15s; }
+.sheet-btn:hover, .sheet-btn:active { background: rgba(37, 211, 102, 0.15); border-color: #25d366; transform: translateY(-1px); }
+.step-num { width: 22px; height: 22px; border-radius: 50%; background: rgba(255, 255, 255, 0.15); display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #25d366; flex: none; }
+.step-content { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.step-content strong { font-size: 12px; color: #e9edef; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step-content small { font-size: 10px; color: #8696a0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Actions Bar */
+.phone-actions { display: flex; gap: 28px; align-items: flex-start; justify-content: center; margin: 8px 0 4px; }
+.action-col { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 68px; }
+.round { width: 64px; height: 64px; border-radius: 50%; border: 0; font-size: 26px; cursor: pointer; display: grid; place-items: center; transition: transform 0.15s, background 0.15s; }
+.round:active { transform: scale(0.94); }
+.round.call { background: #25d366; color: #fff; width: 72px; height: 72px; font-size: 30px; box-shadow: 0 4px 16px rgba(37, 211, 102, 0.4); }
+.pulse-call { animation: pulseCall 2s infinite; }
+@keyframes pulseCall { 0%, 100% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.5); } 50% { box-shadow: 0 0 0 14px rgba(37, 211, 102, 0); } }
+.round.hang { background: #ea4335; color: #fff; transform: rotate(135deg); box-shadow: 0 4px 16px rgba(234, 67, 53, 0.35); }
+.round.hang:active { transform: rotate(135deg) scale(0.94); }
+.round.ghost { background: rgba(255, 255, 255, 0.12); color: #e9edef; }
+.round.ghost.muted-on { background: #ea4335; color: #fff; }
+.btn-label-primary { font-size: 13px; color: #25d366; font-weight: 600; margin-top: 4px; }
+.btn-label { font-size: 12px; color: #e9edef; font-weight: 500; }
+.btn-label.end-label { color: #ffb4a8; }
+.btn-sublabel { font-size: 10px; color: #8696a0; }
+
+.phone-type { display: flex; gap: 8px; width: 100%; max-width: 340px; margin: 4px 0; }
+.phone-type input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 12px; border: 0; background: rgba(255,255,255,.1); color: #fff; font: inherit; font-size: 13px; }
+.phone-type button { border: 0; border-radius: 12px; padding: 0 14px; background: #25d366; color: #0c1317; font-weight: 700; cursor: pointer; }
+.phone-foot { font-size: 11px; color: #8696a0; margin: 0; }
