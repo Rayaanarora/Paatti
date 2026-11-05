@@ -232,7 +232,10 @@ class VoiceCall:
         rest = " ".join(chunks[len(self._sent):]).strip()
         if self.send_text and rest:
             log.warning("Sarvam voice refused (%s); phone speaks the line itself", err)
-            await self.send_text(rest)
+            try:
+                await self.send_text(rest, str(err))
+            except TypeError:  # a send_text that takes only the line
+                await self.send_text(rest)
         else:
             self.service.hub.publish(self.session.id, {"type": "notice", "message": f"voice output failed: {err}"})
 

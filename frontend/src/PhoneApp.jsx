@@ -477,6 +477,7 @@ export default function PhoneApp({ sessionId: initialId }) {
       } else if (msg.type === 'clear') {
         clearAudio()
       } else if (msg.type === 'paatti_text') {
+        if (msg.reason) setError(`Sarvam voice failed, using the phone's voice. Sarvam said: ${msg.reason}`)
         whenAnswered(() => speakText(msg.text, msg.lang))
       } else if (msg.type === 'turn') {
         const t = msg.turn

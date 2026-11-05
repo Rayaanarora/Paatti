@@ -212,7 +212,10 @@ export function useCall() {
         if (msg.turn.role === 'paatti' && live.current.voiceMode === 'browser' && snap.channel === 'web') speak(msg.turn.text)
       } else if (msg.type === 'state') dispatch({ type: 'state', state: msg.state })
       else if (msg.type === 'paatti_audio' && live.current.voiceMode === 'server') playWav(msg.data)
-      else if (msg.type === 'speak_text') speakFallback(msg.text)
+      else if (msg.type === 'speak_text') {
+        if (msg.reason) notice(`Sarvam voice failed, using the browser voice. Sarvam said: ${msg.reason}`, 'warn')
+        speakFallback(msg.text)
+      }
       else if (msg.type === 'notice') notice(msg.message, 'warn')
       else if (msg.type === 'error') notice(msg.message, 'error')
     }

@@ -472,14 +472,15 @@ def create_app(
 
             try:
                 await speak_stream(tracked(), sarvam, profile.language_code, profile.tts_speaker, send)
-            except SarvamError:
+            except SarvamError as err:
                 # Sarvam refused (rate limit, credits): the browser speaks her line instead.
                 while not done["end"]:
                     item = await sentences.get()
                     if item is None:
                         break
                     heard.append(item)
-                reply({"type": "speak_text", "text": " ".join(heard), "lang": profile.language_code})
+                reply({"type": "speak_text", "text": " ".join(heard), "lang": profile.language_code,
+                       "reason": str(err)[:200]})
         except (SarvamError, ValueError) as e:
             reply({"type": "notice", "message": f"voice output unavailable: {e}"})
         finally:
@@ -549,8 +550,8 @@ def create_app(
         if sarvam:
             lang = PROFILES[s.persona_key].language_code
 
-            async def send_text(text: str) -> None:  # Sarvam refused: the phone speaks the line itself
-                await send({"type": "paatti_text", "text": text, "lang": lang})
+            async def send_text(text: str, reason: str = "") -> None:  # Sarvam refused: phone speaks it
+                await send({"type": "paatti_text", "text": text, "lang": lang, "reason": reason[:200]})
 
             async def stt_unavailable() -> None:  # Sarvam refused: the phone listens on-device
                 await send({"type": "stt_local"})
