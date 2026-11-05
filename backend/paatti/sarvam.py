@@ -44,7 +44,15 @@ class SarvamClient:
         self.settings = settings
         self._day = time.strftime("%Y-%m-%d")
         self.calls_today = 0
+        self.last_error: dict | None = None  # {"status", "at", "what"}: surfaced in /api/health
         self.http = http or httpx.AsyncClient(base_url=settings.sarvam_base_url, timeout=15)
+
+    def _note(self, status: int, what: str) -> None:
+        self.last_error = {"status": status, "at": time.time(), "what": what}
+
+    def status(self) -> dict:
+        return {"calls_today": self.calls_today, "daily_cap": self.settings.sarvam_daily_cap,
+                "last_error": self.last_error}
 
     def _spend(self) -> None:
         today = time.strftime("%Y-%m-%d")
@@ -90,6 +98,7 @@ class SarvamClient:
         except httpx.HTTPError as e:  # network trouble must surface as SarvamError, never kill a call
             raise SarvamError(f"speech-to-text unreachable ({type(e).__name__})") from e
         if resp.status_code != 200:
+            self._note(resp.status_code, "speech-to-text")
             log.warning("Sarvam STT HTTP %s: %s", resp.status_code, resp.text)
             raise SarvamError(f"speech-to-text failed ({resp.status_code}{_detail(resp)})")
         return str(resp.json().get("transcript", "")).strip()
@@ -121,6 +130,7 @@ class SarvamClient:
             log.warning("Sarvam rejected speaker %r (HTTP %s); using %r", speaker, resp.status_code, fallback)
             return await self.synthesize(text, language_code=language_code, speaker=fallback)
         if resp.status_code != 200:
+            self._note(resp.status_code, "text-to-speech")
             log.warning("Sarvam TTS HTTP %s", resp.status_code)
             raise SarvamError(f"text-to-speech failed ({resp.status_code}{_detail(resp)})")
         audios = resp.json().get("audios") or []

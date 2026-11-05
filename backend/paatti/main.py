@@ -118,7 +118,44 @@ def create_app(
             "reply_sources": persona.stats,
             "cached_replies": len(persona.cache),
             "llm_pool": persona.backend.status() if hasattr(persona.backend, "status") else None,
+            "sarvam": sarvam.status() if sarvam else None,
+            "quota": quota_report(),
         }
+
+    def quota_report() -> list[str]:
+        """Plain-language list of which API key or cap is running out (empty = all fine)."""
+        out: list[str] = []
+        pool = persona.backend.status() if hasattr(persona.backend, "status") else None
+        if pool:
+            if pool["calls_today"] >= pool["daily_cap"]:
+                out.append(f"Gemini: this server's own daily cap is used up ({pool['calls_today']}/{pool['daily_cap']}). "
+                           "Raise PAATTI_GEMINI_DAILY_CAP; the key itself may still have quota.")
+            by_key: dict[int, list[dict]] = {}
+            for sl in pool["slots"]:
+                by_key.setdefault(sl["key"], []).append(sl)
+            for k, slots in sorted(by_key.items()):
+                states = {sl["state"] for sl in slots}
+                name = f"Gemini key #{k + 1}"
+                if states == {"retired"}:
+                    out.append(f"{name}: rejected (invalid, disabled or no access). Replace it in GEMINI_API_KEYS.")
+                elif "ready" not in states:
+                    out.append(f"{name}: every model is rate-limited (HTTP 429 = free-tier quota used up). "
+                               "It recovers by itself; add another key to GEMINI_API_KEYS to keep going.")
+                else:
+                    cooling = [sl["model"] for sl in slots if sl["state"] == "cooling"]
+                    if cooling:
+                        out.append(f"{name}: quota hit on {', '.join(cooling)}; still answering on the other models.")
+        if sarvam:
+            st = sarvam.status()
+            if st["calls_today"] >= st["daily_cap"]:
+                out.append(f"Sarvam: this server's daily cap is used up ({st['calls_today']}/{st['daily_cap']}). Raise SARVAM_DAILY_CAP.")
+            err = st["last_error"]
+            if err and time.time() - err["at"] < 900:
+                hint = {401: "key invalid", 403: "key invalid or out of credits", 402: "out of credits",
+                        429: "rate limit or credits used up"}.get(err["status"], "service error")
+                out.append(f"Sarvam: {err['what']} failed with HTTP {err['status']} ({hint}) in the last 15 minutes. "
+                           "Check credits at dashboard.sarvam.ai.")
+        return out
 
     def is_operator(request: Request) -> bool:
         tok = request.headers.get("X-Operator-Token") or request.query_params.get("token")

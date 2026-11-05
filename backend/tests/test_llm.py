@@ -463,3 +463,21 @@ async def test_gemini_chat_stream_respects_daily_cap():
     fake = FakeStreamModels({"m-a": ["x"]})
     b = gemini(fake, models=("m-a",), gemini_daily_cap=0)
     assert [t async for t in b.chat_stream("s", [{"role": "user", "content": "x"}], None)] == []
+
+
+def test_health_quota_says_which_gemini_key_ran_out(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from paatti.config import Settings
+    from paatti.main import create_app
+
+    monkeypatch.setenv("PAATTI_DB", str(tmp_path / "q.db"))
+    app = create_app(Settings(gemini_api_keys=["k1", "k2"]))
+    pool = app.state.service.persona.backend.pool
+    for (k, _m), s in pool._slots.items():
+        if k == 0:
+            pool.cool(s, 60)          # key 1: 429 on every model
+    pool.retire_key(1)                # key 2: rejected
+    quota = TestClient(app).get("/api/health").json()["quota"]
+    assert any(q.startswith("Gemini key #1: every model is rate-limited") for q in quota)
+    assert any(q.startswith("Gemini key #2: rejected") for q in quota)

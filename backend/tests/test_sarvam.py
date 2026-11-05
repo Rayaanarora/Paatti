@@ -169,3 +169,18 @@ async def test_synthesize_puts_voice_on_a_phone_line():
     assert out_rate == LINE_RATE                      # narrowband, like a real call
     assert 1.0 < len(pcm) / 2 / LINE_RATE < 1.25      # same length plus a short room-tone lead/tail
     assert rms(pcm[:2 * LINE_RATE // 25]) > 0         # lead-in is quiet room tone, not digital silence
+
+
+async def test_sarvam_remembers_its_last_error_for_the_health_page():
+    c = make_client(lambda r: httpx.Response(402, json={"error": {"message": "credits exhausted"}}))
+    with pytest.raises(SarvamError):
+        await c.synthesize("Hello kanna")
+    st = c.status()
+    assert st["last_error"]["status"] == 402 and st["last_error"]["what"] == "text-to-speech"
+    assert st["calls_today"] == 1
+
+
+def test_health_names_the_exhausted_key(monkeypatch):
+    app = create_app(Settings(sarvam_api_key="k"))
+    c = TestClient(app)
+    assert c.get("/api/health").json()["quota"] == []
