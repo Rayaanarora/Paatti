@@ -266,18 +266,43 @@ export default function PhoneApp({ sessionId: initialId }) {
   const name = persona === 'dadi' ? 'Sharda Dadi' : 'Kamala Paatti'
   return (
     <div className={`phone ${phase}`}>
+      <div className="wa-header">
+        <span className="wa-lock">🔒</span> WhatsApp Voice Call · End-to-end encrypted
+      </div>
+
       <div className="phone-top">
         <div className="avatar" aria-hidden="true">{name[0]}</div>
         <h1>{name}</h1>
+        <p className="phone-subtitle">Retired Teacher · Mylapore</p>
         <p className="phone-status">
-          {phase === 'idle' && 'Mobile · India'}
+          {phase === 'idle' && 'Ready to call'}
           {phase === 'ringing' && 'Calling…'}
           {phase === 'connected' && formatClock(seconds)}
           {phase === 'ended' && `Call ended · ${formatClock(seconds)}`}
           {phase === 'error' && 'Call failed'}
         </p>
+        {phase === 'connected' && (
+          <div className="live-mic-banner">
+            <span className="mic-dot"></span> Mic Live · Speak to Paatti
+          </div>
+        )}
         {error && <p className="phone-error">{error}</p>}
       </div>
+
+      {phase === 'connected' && (
+        <div className="phone-demo-sheet">
+          <p className="demo-sheet-label">Or Tap Script Line:</p>
+          <button type="button" className="sheet-btn" onClick={() => send({ type: 'text', text: 'This is Inspector Rajesh Verma from CBI. Your Aadhaar is linked to a money-laundering case.' })}>
+            1. "This is CBI. Aadhaar case..."
+          </button>
+          <button type="button" className="sheet-btn" onClick={() => send({ type: 'text', text: 'Transfer Rs 4,50,000 to the safe account now: 5021 0034 7781 9920.' })}>
+            2. "Transfer Rs 4.5L to safe account..."
+          </button>
+          <button type="button" className="sheet-btn" onClick={() => send({ type: 'text', text: 'Yes correct, IFSC is HDFC0001234. Transfer immediately.' })}>
+            3. "Yes correct, IFSC HDFC0001234..."
+          </button>
+        </div>
+      )}
 
       {phase === 'connected' && !voice && (
         <form className="phone-type" onSubmit={sendDraft}>
@@ -288,18 +313,27 @@ export default function PhoneApp({ sessionId: initialId }) {
 
       <div className="phone-actions">
         {(phase === 'idle' || phase === 'ended' || phase === 'error') && (
-          <button className="round call" onClick={call} aria-label="Call">📞</button>
+          <div className="action-col">
+            <button className="round call" onClick={call} aria-label="Call">📞</button>
+            <span className="btn-label">Call Paatti</span>
+          </div>
         )}
         {(phase === 'ringing' || phase === 'connected') && (
           <>
-            <button className={`round ghost ${muted ? 'on' : ''}`} onClick={() => setMuted((m) => !m)} aria-pressed={muted} aria-label="Mute">
-              {muted ? '🔇' : '🎙️'}
-            </button>
-            <button className="round hang" onClick={() => hangup()} aria-label="End call">📞</button>
+            <div className="action-col">
+              <button className={`round ghost ${muted ? 'on' : ''}`} onClick={() => setMuted((m) => !m)} aria-pressed={muted} aria-label="Mute">
+                {muted ? '🔇' : '🎙️'}
+              </button>
+              <span className="btn-label">{muted ? 'Unmute' : 'Mute'}</span>
+            </div>
+            <div className="action-col">
+              <button className="round hang" onClick={() => hangup()} aria-label="End call">📞</button>
+              <span className="btn-label">End Call</span>
+            </div>
           </>
         )}
       </div>
-      <p className="phone-foot">Paatti honeypot demo line</p>
+      <p className="phone-foot">Paatti Honeypot Line · Tamil Voice Active</p>
     </div>
   )
 }

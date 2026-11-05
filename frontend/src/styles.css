@@ -154,7 +154,19 @@ h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: v
 
 /* ---- mobile call screen ---- */
 .phone-mode body { background: #0e1512; }
-.phone { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 48px 16px 24px; color: #f4f1ea; background: radial-gradient(120% 80% at 50% 0%, #24423a 0%, #0e1512 70%); text-align: center; }
+.wa-header { font-size: 11px; color: #8696a0; display: flex; align-items: center; gap: 5px; margin-bottom: 8px; font-weight: 500; letter-spacing: 0.02em; }
+.wa-lock { font-size: 10px; }
+.phone-subtitle { font-size: 13px; color: #8696a0; margin-top: -6px; }
+.live-mic-banner { display: inline-flex; align-items: center; gap: 6px; background: rgba(37, 211, 102, 0.15); border: 1px solid rgba(37, 211, 102, 0.4); color: #25d366; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 20px; margin-top: 6px; }
+.mic-dot { width: 8px; height: 8px; border-radius: 50%; background: #25d366; animation: pulse 1s infinite alternate; }
+@keyframes pulse { from { opacity: 0.4; } to { opacity: 1; transform: scale(1.15); } }
+.action-col { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.btn-label { font-size: 11px; color: #8696a0; font-weight: 500; }
+.phone-demo-sheet { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 340px; margin: 12px 0; }
+.demo-sheet-label { font-size: 11px; color: #8696a0; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-bottom: 2px; }
+.sheet-btn { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12); color: #e9edef; font-size: 12px; padding: 8px 12px; border-radius: 10px; cursor: pointer; text-align: left; transition: background 0.15s; }
+.sheet-btn:hover, .sheet-btn:active { background: rgba(37, 211, 102, 0.2); border-color: #25d366; }
+.phone { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 32px 16px 20px; color: #f4f1ea; background: radial-gradient(120% 80% at 50% 0%, #122822 0%, #0b141a 75%); text-align: center; }
 .phone-top { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .avatar { width: 96px; height: 96px; border-radius: 50%; background: #b4532a; display: grid; place-items: center; font-size: 42px; font-weight: 700; box-shadow: 0 0 0 8px rgba(255,255,255,.06); }
 .phone.ringing .avatar { animation: ring 1.2s infinite; }
