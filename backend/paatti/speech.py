@@ -20,7 +20,7 @@ _CLAUSE = re.compile(r"(?<=[,;:])\s+")
 FIRST_MIN = 12   # first chunk: as short as possible, but a real phrase
 MIN_LEN = 40     # later chunks: big enough to sound natural
 MAX_LEN = 160    # never send a huge chunk
-MAX_PARALLEL = 4
+MAX_PARALLEL = 2  # parallel TTS requests per reply: more trips Sarvam's per-minute rate limit
 
 
 class TTS(Protocol):

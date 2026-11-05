@@ -26,7 +26,7 @@ from .config import Settings
 from .db import Database, DbRepeatRegistry
 from .extractor import LLMExtractor
 from .persona import Persona
-from .personas import PROFILES, is_persona_choice
+from .personas import PROFILES, active_personas, is_persona_choice
 from .report import GOLDEN_HOUR_S, build_report, render_pdf
 from .sarvam import SarvamClient, SarvamError
 from .service import CallService, Hub, RateLimiter, SessionStore
@@ -113,7 +113,7 @@ def create_app(
             "twilio_number": settings.twilio_number if settings.telephony_enabled else None,
             "public_url": settings.public_url,
             "personas": [{"key": p.key, "name": p.name, "language": p.language_code, "tagline": p.tagline,
-                          "avatar": p.avatar} for p in PROFILES.values()],
+                          "avatar": p.avatar, "active": p.key in active_personas()} for p in PROFILES.values()],
             "default_persona": settings.persona_key if is_persona_choice(settings.persona_key) else "paatti",
             "reply_sources": persona.stats,
             "cached_replies": len(persona.cache),
@@ -371,10 +371,11 @@ def create_app(
         from .speech import split_for_tts
 
         scripted = all_scripted_replies() if settings.demo_mode else {}
-        first = [k for k in dict.fromkeys([settings.persona_key, "paatti", "dadi"]) if k in _P]
+        live = active_personas()
+        first = [k for k in dict.fromkeys([settings.persona_key, "paatti", "dadi"]) if k in live]
         # Only the demo personas by default: every clip costs a Sarvam request, and the free Render
         # disk is wiped on each deploy AND each wake from sleep. Other personas synthesise live.
-        order = first + ([k for k in _P if k not in first] if app.state.warm_all else [])
+        order = first + ([k for k in live if k not in first] if app.state.warm_all else [])
         state = {"limited": 0}
 
         async def say(text: str, profile) -> bytes | None:
@@ -525,8 +526,17 @@ def create_app(
 
         call: VoiceCall | None = None
         if sarvam:
+            lang = PROFILES[s.persona_key].language_code
+
+            async def send_text(text: str) -> None:  # Sarvam refused: the phone speaks the line itself
+                await send({"type": "paatti_text", "text": text, "lang": lang})
+
+            async def stt_unavailable() -> None:  # Sarvam refused: the phone listens on-device
+                await send({"type": "stt_local"})
+
             call = VoiceCall(service, s, sarvam, in_rate=PHONE_RATE, out_rate=PHONE_RATE,
-                             send_audio=send_audio, clear_audio=clear_audio, barge_in=False, echo_guard=True)
+                             send_audio=send_audio, clear_audio=clear_audio, barge_in=False, echo_guard=True,
+                             send_text=send_text, on_stt_unavailable=stt_unavailable)
             call.start()
         profile = PROFILES[s.persona_key]
         await send({"type": "connected", "voice": bool(sarvam), "persona": s.persona_key, "name": profile.name,
@@ -559,7 +569,7 @@ def create_app(
                     await greet()
                 elif kind == "ping":
                     await send({"type": "pong"})
-                elif kind == "pcm" and call and link["greeted"]:
+                elif kind == "pcm" and call and link["greeted"] and not call.stt_local:
                     data = decode_b64(msg, 512 * 1024)
                     if data:
                         s.add_audio_chunk(data)

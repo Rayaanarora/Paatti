@@ -75,7 +75,8 @@ def test_intent_lines_come_in_the_personas_own_language():
     assert r.reply("s3", "paatti", "Are you a robot?").startswith("Aiyo")  # unchanged
 
 
-def test_random_persona_and_validation():
+def test_random_persona_and_validation(monkeypatch):
+    monkeypatch.setenv("PAATTI_ACTIVE_PERSONAS", "all")
     assert is_persona_choice(RANDOM) and is_persona_choice("bauji") and not is_persona_choice("nope")
     picks = {resolve_persona(RANDOM, rng=random.Random(i)) for i in range(200)}
     assert picks == set(PROFILES)
@@ -84,7 +85,8 @@ def test_random_persona_and_validation():
     assert get_profile("missing").key == "paatti"
 
 
-def test_api_creates_calls_with_any_persona_or_random():
+def test_api_creates_calls_with_any_persona_or_random(monkeypatch):
+    monkeypatch.setenv("PAATTI_ACTIVE_PERSONAS", "all")
     c = TestClient(create_app(Settings()))
     assert c.post("/api/sessions", json={"persona": "thakuma"}).json()["persona"] == "thakuma"
     assert c.post("/api/sessions", json={"persona": "random"}).json()["persona"] in PROFILES
@@ -96,3 +98,22 @@ def test_random_default_persona_from_settings():
     seen = {c.post("/api/sessions", json={}).json()["persona"] for _ in range(25)}
     assert len(seen) > 1 and seen <= set(PROFILES)
     assert c.get("/api/health").json()["default_persona"] == "random"
+
+
+def test_only_paatti_and_dadi_take_calls_by_default(monkeypatch):
+    import random as _r
+
+    from fastapi.testclient import TestClient
+
+    from paatti.config import Settings
+    from paatti.main import create_app
+    from paatti.personas import resolve_persona
+
+    monkeypatch.delenv("PAATTI_ACTIVE_PERSONAS", raising=False)
+    rng = _r.Random(1)
+    assert {resolve_persona("random", rng=rng) for _ in range(50)} == {"paatti", "dadi"}
+    assert resolve_persona("bauji") == "paatti"          # a "coming soon" persona falls back
+    c = TestClient(create_app(Settings()))
+    assert c.post("/api/sessions", json={"persona": "bauji"}).json()["persona"] == "paatti"
+    listed = {p["key"]: p["active"] for p in c.get("/api/health").json()["personas"]}
+    assert len(listed) == 12 and [k for k, on in listed.items() if on] == ["paatti", "dadi"]

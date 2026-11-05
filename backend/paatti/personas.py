@@ -8,6 +8,7 @@ grandparent per call, so a repeat caller can't learn one voice.
 
 from __future__ import annotations
 
+import os
 import random
 
 from .personas_more import MORE_PROFILES
@@ -135,14 +136,26 @@ def get_profile(key: str | None) -> Profile:
     return PROFILES.get(key or "", PAATTI)
 
 
+def active_personas() -> list[str]:
+    """Personas that can take calls. The rest are listed as "coming soon": each live line of an
+    un-rehearsed persona costs Sarvam requests, and the demo runs on a rate-limited plan.
+    PAATTI_ACTIVE_PERSONAS=all turns every persona on."""
+    raw = os.getenv("PAATTI_ACTIVE_PERSONAS", "paatti,dadi").strip()
+    if raw == "all":
+        return list(PROFILES)
+    keys = [k for k in (x.strip() for x in raw.split(",")) if k in PROFILES]
+    return keys or ["paatti"]
+
+
 def is_persona_choice(key: str | None) -> bool:
-    """A persona a caller may ask for: a real profile key or "random"."""
-    return key == RANDOM or key in PROFILES
+    """A persona a caller may ask for: an active profile key or "random"."""
+    return key == RANDOM or key in active_personas()
 
 
 def resolve_persona(key: str | None, default: str = "paatti", rng: random.Random | None = None) -> str:
-    """Turn a requested persona (key, "random", or junk) into a real profile key."""
+    """Turn a requested persona (key, "random", or junk) into an active profile key."""
+    active = active_personas()
     choice = key if is_persona_choice(key) else default
     if choice == RANDOM:
-        return (rng or random).choice(list(PROFILES))
-    return choice if choice in PROFILES else "paatti"
+        return (rng or random).choice(active)
+    return choice if choice in active else active[0]

@@ -522,3 +522,45 @@ def test_hangup_hands_the_phone_its_end_summary():
     assert summary["session_id"] == sid and summary["scammer_turns"] == 1
     assert [x["field"] for x in summary["captured"]] == ["account_number"]
     assert app.state.store.get(sid).ended_at is not None
+
+
+async def test_refused_voice_falls_back_to_the_phones_own_voice():
+    service = make_service()
+    spoken = []
+
+    async def send_text(t):
+        spoken.append(t)
+
+    s, call, sent, _ = make_call(service, FakeSarvam(fail_tts=True), send_text=send_text)
+    await call.reply_streaming("This is CBI, your Aadhaar is linked to a case")
+    assert sent == [] and len(spoken) == 1 and spoken[0]       # nothing from Sarvam, the phone says it
+    assert spoken[0].split()[0] in s.turns[-1].text             # her actual reply, not an error
+
+
+async def test_refused_greeting_is_spoken_by_the_phone():
+    service = make_service()
+    spoken = []
+
+    async def send_text(t):
+        spoken.append(t)
+
+    _, call, _, _ = make_call(service, FakeSarvam(fail_tts=True), send_text=send_text)
+    await call.play("Hello? Yaaru pesradhu?", cache=True)
+    assert spoken == ["Hello? Yaaru pesradhu?"]
+
+
+async def test_refused_speech_to_text_switches_the_phone_to_on_device_recognition():
+    class NoSTT(FakeSarvam):
+        async def transcribe(self, audio, filename="turn.wav", mime="audio/wav"):
+            raise SarvamError("speech-to-text failed (429: Rate limit exceeded)")
+
+    service = make_service()
+    switched = []
+
+    async def stt_local():
+        switched.append(True)
+
+    _, call, _, _ = make_call(service, NoSTT(), on_stt_unavailable=stt_local)
+    await call.handle_utterance(silence(500, 8000))
+    await call.handle_utterance(silence(500, 8000))
+    assert switched == [True] and call.stt_local     # told once, not on every utterance

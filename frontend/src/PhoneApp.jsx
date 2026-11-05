@@ -452,6 +452,19 @@ export default function PhoneApp({ sessionId: initialId }) {
           r.scammerTurns.add(t.index)
           setBeatsSent(r.scammerTurns.size)
         }
+      } else if (msg.type === 'stt_local') {
+        // Sarvam can't take more speech right now: listen with the phone's own recognition.
+        r.node?.srcNode.disconnect()
+        r.node?.tap.disconnect()
+        r.node = null
+        r.stream?.getTracks().forEach((t) => t.stop())
+        r.stream = null
+        if (SpeechRecognition) {
+          startRecognition()
+        } else {
+          setNoMic(true)
+          setError('Speech service is busy. Tap the lines or type instead.')
+        }
       } else if (msg.type === 'notice') {
         setError(msg.message)
       } else if (msg.type === 'ended') {

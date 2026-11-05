@@ -20,7 +20,7 @@ from typing import Awaitable, Callable
 from .audio import VAD, pcm_from_wav, resample, wav_from_pcm
 from .personas import get_profile
 from .sarvam import SarvamClient, SarvamError
-from .speech import speak_stream, synth_stream
+from .speech import speak_stream, split_for_tts, synth_stream
 from .service import CallService
 from .session import CallSession
 
@@ -67,6 +67,8 @@ class VoiceCall:
         barge_in: bool = True,
         echo_guard: bool = False,
         clock: Callable[[], float] = time.monotonic,
+        send_text: Callable[[str], Awaitable[None]] | None = None,
+        on_stt_unavailable: Callable[[], Awaitable[None]] | None = None,
     ):
         self.service = service
         self.session = session
@@ -78,6 +80,12 @@ class VoiceCall:
         self.barge_in = barge_in
         self.echo_guard = echo_guard
         self.clock = clock
+        # Fallbacks for when Sarvam refuses (rate limit, no credits): the phone speaks the line
+        # with its own voice, and listens with its own recognition. The call never goes silent.
+        self.send_text = send_text
+        self.on_stt_unavailable = on_stt_unavailable
+        self.stt_local = False
+        self._sent: list[str] = []
         self.profile = get_profile(session.persona_key)
         self.vad = VAD(rate=in_rate)
         self.play_until = 0.0
@@ -107,7 +115,11 @@ class VoiceCall:
         """Pre-synthesise greeting and fillers so they play instantly (demo lines are
         warmed into the disk cache at server startup)."""
         lines = [self.profile.greeting, *self.profile.fillers[:3], *(self.profile.unclear[:1])]
-        await asyncio.gather(*(self._tts(t, cache=True) for t in lines), return_exceptions=True)
+        for t in lines:  # one at a time: a burst of parallel requests trips Sarvam's rate limit
+            try:
+                await self._tts(t, cache=True)
+            except (SarvamError, ValueError, EOFError, wave.Error):
+                break
 
     async def greet(self) -> None:
         self.service.say(self.session, self.profile.greeting)
@@ -147,6 +159,11 @@ class VoiceCall:
         try:
             text = await self.sarvam.transcribe(wav, filename="turn.wav", mime="audio/wav")
         except SarvamError as e:
+            if self.on_stt_unavailable and not self.stt_local:
+                self.stt_local = True  # the phone listens with its own recognition from now on
+                await self.on_stt_unavailable()
+                log.warning("Sarvam speech-to-text refused (%s); phone switched to on-device recognition", e)
+                return
             self.service.hub.publish(self.session.id, {"type": "notice", "message": f"speech-to-text failed: {e}"})
             return
         if not text:
@@ -186,14 +203,41 @@ class VoiceCall:
                     yield item
                     item = await sentences.get()
 
-            await speak_stream(stream(), self.sarvam, self.profile.language_code, self.profile.tts_speaker,
-                               self._send_chunk)
-        except (SarvamError, ValueError, EOFError, wave.Error) as e:
-            self.service.hub.publish(self.session.id, {"type": "notice", "message": f"voice output failed: {e}"})
+            self._sent = []
+            heard: list[str] = []
+            done = {"end": False}
+
+            async def tracked():
+                async for item in stream():
+                    heard.append(item)
+                    yield item
+                done["end"] = True
+
+            try:
+                await speak_stream(tracked(), self.sarvam, self.profile.language_code, self.profile.tts_speaker,
+                                   self._send_chunk)
+            except (SarvamError, ValueError, EOFError, wave.Error) as e:
+                while not done["end"]:  # collect the rest of what the model writes
+                    item = await sentences.get()
+                    if item is None:
+                        break
+                    heard.append(item)
+                await self._fallback(heard, e)
         finally:
             await producer
 
+    async def _fallback(self, sentences: list[str], err: Exception) -> None:
+        """Sarvam refused mid-reply: speak what is still unsaid with the phone's own voice."""
+        chunks = [c for sentence in sentences for c in (split_for_tts(sentence) or [])]
+        rest = " ".join(chunks[len(self._sent):]).strip()
+        if self.send_text and rest:
+            log.warning("Sarvam voice refused (%s); phone speaks the line itself", err)
+            await self.send_text(rest)
+        else:
+            self.service.hub.publish(self.session.id, {"type": "notice", "message": f"voice output failed: {err}"})
+
     async def _send_chunk(self, _chunk: str, wav: bytes) -> None:
+        self._sent.append(_chunk)
         pcm, rate = pcm_from_wav(wav)
         pcm = resample(pcm, rate, self.out_rate)
         self._queue_playback(pcm)
@@ -226,11 +270,13 @@ class VoiceCall:
                 self._queue_playback(pcm)
                 await self.send_audio(pcm)
                 return
+            self._sent = []
             async for _chunk, wav in synth_stream(self.sarvam, text, self.profile.language_code,
                                                   self.profile.tts_speaker):
+                self._sent.append(_chunk)
                 pcm, rate = pcm_from_wav(wav)
                 pcm = resample(pcm, rate, self.out_rate)
                 self._queue_playback(pcm)
                 await self.send_audio(pcm)
         except (SarvamError, ValueError, EOFError, wave.Error) as e:
-            self.service.hub.publish(self.session.id, {"type": "notice", "message": f"voice output failed: {e}"})
+            await self._fallback([text], e)

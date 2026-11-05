@@ -115,10 +115,18 @@ export function PhoneDemo({ health, onCreate }) {
       <div className="row">
         <label className="check">Persona
           <select value={persona} onChange={(e) => setPersona(e.target.value)}>
-            <option value="random">Random (new grandparent every call)</option>
-            {(health?.personas || [{ key: 'paatti', name: 'Kamala Paatti' }]).map((p) => (
-              <option key={p.key} value={p.key}>{p.name}{p.tagline ? ` · ${p.tagline.split(' · ').pop()}` : ''}</option>
-            ))}
+            {(health?.personas || [{ key: 'paatti', name: 'Kamala Paatti', active: true }])
+              .filter((p) => p.active !== false).map((p) => (
+                <option key={p.key} value={p.key}>{p.name}{p.tagline ? ` · ${p.tagline.split(' · ').pop()}` : ''}</option>
+              ))}
+            <option value="random">Random (either grandparent)</option>
+            {(health?.personas || []).some((p) => p.active === false) && (
+              <optgroup label="Coming soon">
+                {health.personas.filter((p) => p.active === false).map((p) => (
+                  <option key={p.key} value={p.key} disabled>{p.name}{p.tagline ? ` · ${p.tagline.split(' · ').pop()}` : ''}</option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </label>
         <button className="btn" onClick={makeQr}><Icon name="qr" size={16} /> Phone call via QR</button>
