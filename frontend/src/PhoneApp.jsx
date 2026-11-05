@@ -282,6 +282,40 @@ export default function PhoneApp({ sessionId: initialId }) {
     setDraft('')
   }
 
+  const DEMO_STEPS = [
+    {
+      step: 1,
+      tag: 'STEP 1 · ACCUSATION',
+      target: 'Agency: CBI',
+      line: 'This is Inspector Rajesh Verma from CBI. Your Aadhaar is linked to a money-laundering case.',
+    },
+    {
+      step: 2,
+      tag: 'STEP 2 · DEMAND MULE TRANSFER',
+      target: 'Account: 5021 0034 7781 9920 · Rs 4,50,000',
+      line: 'To clear your name, transfer Rs 4,50,000 to safe account: 5021 0034 7781 9920.',
+    },
+    {
+      step: 3,
+      tag: 'STEP 3 · CONFIRM & LOCK INTEL',
+      target: 'IFSC: HDFC0001234 (Locks Green)',
+      line: 'Yes correct, the IFSC is HDFC0001234. Transfer immediately.',
+    },
+    {
+      step: 4,
+      tag: 'OPTIONAL · UPI CLIMAX',
+      target: 'UPI: rbi.verify@ybl',
+      line: 'Fine, send it by UPI to rbi.verify@ybl immediately.',
+    },
+  ]
+
+  const [activeStep, setActiveStep] = useState(0)
+
+  const handleSendStep = (idx, text) => {
+    setActiveStep(idx + 1)
+    send({ type: 'text', text })
+  }
+
   const name = persona === 'dadi' ? 'Sharda Dadi' : 'Kamala Paatti'
   return (
     <div className={`phone ${phase}`}>
@@ -325,29 +359,38 @@ export default function PhoneApp({ sessionId: initialId }) {
         <div className="phone-demo-sheet">
           <div className="demo-sheet-header">
             <span>📋 JUDGE DEMO SCRIPT</span>
-            <span className="demo-badge">Read aloud or Tap</span>
+            <span className="demo-badge">Read aloud OR Tap</span>
           </div>
-          <button type="button" className="sheet-btn" onClick={() => send({ type: 'text', text: 'This is Inspector Rajesh Verma from CBI. Your Aadhaar is linked to a money-laundering case.' })}>
-            <span className="step-num">1</span>
-            <div className="step-content">
-              <strong>"This is CBI Inspector Verma..."</strong>
-              <small>Accuse victim of money laundering</small>
-            </div>
-          </button>
-          <button type="button" className="sheet-btn" onClick={() => send({ type: 'text', text: 'Transfer Rs 4,50,000 to the safe account now: 5021 0034 7781 9920.' })}>
-            <span className="step-num">2</span>
-            <div className="step-content">
-              <strong>"Transfer Rs 4,50,000 to safe account..."</strong>
-              <small>Demand transfer to mule account 5021 0034 7781 9920</small>
-            </div>
-          </button>
-          <button type="button" className="sheet-btn" onClick={() => send({ type: 'text', text: 'Yes correct, IFSC is HDFC0001234. Transfer immediately.' })}>
-            <span className="step-num">3</span>
-            <div className="step-content">
-              <strong>"Yes correct, IFSC is HDFC0001234..."</strong>
-              <small>Confirm read-back & lock evidentiary report</small>
-            </div>
-          </button>
+
+          <div className="demo-cards-list">
+            {DEMO_STEPS.map((s, idx) => {
+              const isDone = activeStep > idx + 1
+              const isCurrent = activeStep === idx + 1 || (activeStep === 0 && idx === 0)
+              return (
+                <div
+                  key={s.step}
+                  className={`script-card ${isCurrent ? 'current' : ''} ${isDone ? 'done' : ''}`}
+                  onClick={() => handleSendStep(idx, s.line)}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <div className="script-card-header">
+                    <span className="script-tag">{s.tag}</span>
+                    <span className="script-target">{s.target}</span>
+                  </div>
+                  <p className="script-speech-text">
+                    "{s.line}"
+                  </p>
+                  <div className="script-card-footer">
+                    <span className="script-tap-hint">
+                      {isDone ? '✓ Spoken / Sent' : 'Tap to send line 📤'}
+                    </span>
+                    <span className="script-num-pill">Beat {s.step}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 
