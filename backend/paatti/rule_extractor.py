@@ -73,7 +73,9 @@ STAGE_PATTERNS: dict[Stage, list[str]] = {
 }
 
 IFSC_FIND = re.compile(r"\b([A-Za-z]{4}0[A-Za-z0-9]{6})\b")
-UPI_FIND = re.compile(r"(?<![\w.@])([a-zA-Z0-9][a-zA-Z0-9.\-_]{1,255}@[a-zA-Z]{2,64})\b(?!\.)")
+# A trailing sentence full stop is fine ("pay rbi.verify@ybl."); a dot followed by more
+# letters means an e-mail domain ("a@gmail.com"), which is not a UPI ID.
+UPI_FIND = re.compile(r"(?<![\w.@])([a-zA-Z0-9][a-zA-Z0-9.\-_]{1,255}@[a-zA-Z]{2,64})\b(?!\.[a-zA-Z])")
 # Runs of digits, optionally separated by single spaces or hyphens.
 DIGIT_RUN = re.compile(r"(?:\+?\d[\d \-]{7,30}\d)")
 AMOUNT_NUM = re.compile(

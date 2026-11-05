@@ -275,7 +275,6 @@ def create_app(
                         reply({"type": "error", "message": "server voice not configured; use browser voice or text"})
                         continue
                     s.add_audio_chunk(data)
-                    send_filler(reply, s)  # instant "Haan kanna..." while STT and the model work
                     try:
                         mime = str(msg.get("mime", "audio/wav")).split(";")[0].strip()[:40] or "audio/wav"
                         ext = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a",
@@ -313,8 +312,13 @@ def create_app(
             reply({"type": "paatti_audio", "format": "wav", "filler": True, "data": wavs[i % len(wavs)]})
 
     async def warm_fillers() -> None:
+        """Pre-synthesise fillers (as 16 kHz WAV for the dashboard) and every demo-script line,
+        read-back and greeting into the disk cache, so the rehearsed demo plays instantly."""
+        from .demo import DEMO_ACCOUNT, DEMO_IFSC, DEMO_UPI, all_scripted_replies
         from .personas import PROFILES as _P
+        from .speech import split_for_tts
 
+        scripted = all_scripted_replies() if settings.demo_mode else {}
         for key, profile in _P.items():
             out = []
             for line in profile.fillers:
@@ -327,6 +331,17 @@ def create_app(
                     continue
             if out:
                 filler_wavs[key] = out
+            lines = [profile.greeting, *scripted.get(key, [])]
+            if key in scripted:
+                lines += [profile.readback_line("account_number", DEMO_ACCOUNT.replace(" ", "")),
+                          profile.readback_line("ifsc", DEMO_IFSC), profile.readback_line("upi_id", DEMO_UPI)]
+            for line in lines:
+                for chunk in split_for_tts(line):  # the exact chunks speak_stream will request
+                    try:
+                        await sarvam.synthesize(chunk, language_code=profile.language_code,
+                                                speaker=profile.tts_speaker)
+                    except SarvamError:
+                        break
 
     async def _speak_streaming(reply, s, text: str) -> None:
         """Dashboard voice: stream the reply as 16 kHz chunks while the model is still writing."""
@@ -342,11 +357,34 @@ def create_app(
                 out = wav  # not a WAV we can resample: forward as-is, the browser can still play it
             reply({"type": "paatti_audio", "format": "wav", "data": base64.b64encode(out).decode()})
 
+        sentences: asyncio.Queue = asyncio.Queue()
+
+        async def produce() -> None:
+            try:
+                async for sentence in service.respond_stream(s, text):
+                    await sentences.put(sentence)
+            finally:
+                await sentences.put(None)
+
+        producer = asyncio.create_task(produce())
         try:
-            await speak_stream(service.respond_stream(s, text), sarvam, profile.language_code,
-                               profile.tts_speaker, send)
+            try:  # instant replies play straight away; only a slow model reply gets ONE filler
+                first = await asyncio.wait_for(sentences.get(), 0.6)
+            except asyncio.TimeoutError:
+                send_filler(reply, s)
+                first = await sentences.get()
+
+            async def stream():
+                item = first
+                while item is not None:
+                    yield item
+                    item = await sentences.get()
+
+            await speak_stream(stream(), sarvam, profile.language_code, profile.tts_speaker, send)
         except (SarvamError, ValueError) as e:
             reply({"type": "notice", "message": f"voice output unavailable: {e}"})
+        finally:
+            await producer
 
     # ---- browser phone: a mobile becomes the "scammer's phone" ----------------
     @app.websocket("/ws/phone/{session_id}")

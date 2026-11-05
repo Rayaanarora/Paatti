@@ -5,11 +5,17 @@ import { IntelCards, StageTracker, TimeWasted, Transcript } from './components/P
 import { CHANNEL_LABEL } from './state.js'
 import { useCall } from './useCall.js'
 
-// One-click lines for fast 30-second live demo
+// The rehearsed demo script (docs/DEMO_SCRIPT.md); mirrors backend/paatti/demo.py CALLER_LINES.
+// Paatti's replies to these are pre-recorded, so the demo plays instantly.
 const DEMO_LINES = [
-  'This is Inspector Rajesh Verma from CBI. Your Aadhaar is linked to a money-laundering case.',
-  'Transfer Rs 4,50,000 to the safe account now: 5021 0034 7781 9920.',
-  'Yes correct, IFSC is HDFC0001234. Transfer immediately.',
+  'Hello, am I speaking with Kamala madam? This is Inspector Rajesh Verma from CBI, New Delhi.',
+  'Madam, your Aadhaar card is linked to a money-laundering case. Sixty-eight bank accounts are opened in your name.',
+  'An arrest warrant is issued against you. This is a digital arrest. Do not disconnect and do not tell anyone.',
+  'To clear your name, transfer Rs 4,50,000 to the RBI safe account. Note the number: 5021 0034 7781 9920.',
+  'Yes, correct. The IFSC is HDFC0001234.',
+  'Correct. Transfer it immediately, the officer is waiting.',
+  'Fine, send it by UPI to rbi.verify@ybl.',
+  'Yes! Do it now, madam, quickly.',
 ]
 
 export default function App() {

@@ -15,6 +15,7 @@ import re
 from .config import Settings
 from .llm import LLMBackend, make_backend
 from .personas import Profile, get_profile
+from .demo import DemoDirector
 from .prepared import IntentResponder, ReplyCache
 from .speech import SentenceStreamer
 from .schema import Stage
@@ -75,8 +76,9 @@ class Persona:
         self.cache = cache if cache is not None else ReplyCache(settings.reply_cache_path, settings.reply_cache_write,
                                                                 max_entries=settings.reply_cache_max)
         self.intents = IntentResponder()
+        self.demo = DemoDirector() if settings.demo_mode else None
         self._counters: dict[str, itertools.count] = {}
-        self.stats = {"readback": 0, "intent": 0, "cache": 0, "llm": 0, "script": 0}
+        self.stats = {"readback": 0, "demo": 0, "intent": 0, "cache": 0, "llm": 0, "script": 0}
 
     @property
     def mode(self) -> str:
@@ -86,32 +88,17 @@ class Persona:
         return get_profile(session.persona_key)
 
     async def reply(self, session: CallSession) -> str:
-        """Cheapest safe source first: read-back, intent line, cache, LLM, script."""
-        pending = session.pending_readback()
-        if pending:
-            self.stats["readback"] += 1
-            return session.readback_line(*pending)
-        last = next((t.text for t in reversed(session.turns) if t.role == "scammer"), "")
-        intent_line = self.intents.reply(session.id, session.persona_key, last) if last else None
-        if intent_line:
-            self.stats["intent"] += 1
-            return intent_line
-        prev = next((t.text for t in reversed(session.turns) if t.role == "paatti"), "")
-        cacheable = len(last.split()) >= 4  # "ok", "haan", "tell me" depend on context: don't cache
-        key = ReplyCache.key(session.persona_key, session.stage.value if session.stage else None,
-                             self.missing_fields(session), f"{prev}\n{last}")
-        cached = self.cache.get(key) if cacheable else None
-        if cached and cached != prev and guard_reply(cached, session):
-            self.stats["cache"] += 1
-            return cached
+        """Cheapest safe source first: read-back, demo script, intent line, cache, LLM, script."""
+        quick = self._quick_reply(session)
+        if quick is not None:
+            return quick
         if self.backend:
             profile = self.profile(session)
             raw = await self.backend.chat(profile.system_prompt, self.build_messages(session), self.operator_note(session))
             safe = guard_reply(raw, session) if raw else None
             if safe:
                 self.stats["llm"] += 1
-                if cacheable:
-                    self.cache.put(key, safe)
+                self._remember(session, safe)
                 return safe
             if raw:
                 log.info("persona reply rejected by guard; using script")
@@ -127,8 +114,11 @@ class Persona:
         reply stops there (what was already said was safe)."""
         stream_fn = getattr(self.backend, "chat_stream", None) if self.backend else None
         quick = self._quick_reply(session)
-        if quick is not None or stream_fn is None:
-            yield quick if quick is not None else await self.reply(session)
+        if quick is not None:
+            yield quick
+            return
+        if stream_fn is None:
+            yield await self.reply(session)
             return
         profile = self.profile(session)
         splitter = SentenceStreamer()
@@ -169,6 +159,10 @@ class Persona:
             self.stats["readback"] += 1
             return session.readback_line(*pending)
         last = self._last_caller_line(session)
+        scripted = self.demo.reply(session.id, session.persona_key, last) if self.demo and last else None
+        if scripted:
+            self.stats["demo"] += 1
+            return scripted
         intent_line = self.intents.reply(session.id, session.persona_key, last) if last else None
         if intent_line:
             self.stats["intent"] += 1

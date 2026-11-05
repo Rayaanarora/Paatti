@@ -13,6 +13,7 @@ Built for BeyondHack 2.0 (SRM IST).
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture, data flow, deployment diagrams |
 | [docs/DATABASE.md](docs/DATABASE.md) | SQLite schema and ER diagram |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | Run locally, tunnel, Render, Twilio phone line |
+| [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) | **The live demo script**: eight scammer lines, Paatti's replies, what to point at |
 | [docs/ROUNDS.md](docs/ROUNDS.md) | Round-by-round checklist, 5-minute script, judge Q&A |
 
 ## Features

@@ -105,7 +105,7 @@ async def run_script(script: dict, settings: Settings, use_llm: bool, registry: 
 
 
 async def run_all(scripts: list[dict], use_llm: bool, runs: int = 1) -> list[ScriptResult]:
-    settings = Settings()
+    settings = Settings(demo_mode=False)  # grade the real pipeline, not the rehearsed demo script
     results = []
     for run in range(runs):
         registry = RepeatRegistry()  # fresh per run so repeat matches don't leak between runs

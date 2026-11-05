@@ -102,7 +102,13 @@ export default function PhoneApp({ sessionId: initialId }) {
 
   useEffect(() => () => hangup(true), []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const playWav = async (b64) => {
+  // Strictly in arrival order: async decoding must not reorder filler and reply chunks.
+  const playChain = useRef(Promise.resolve())
+  const playWav = (b64) => {
+    playChain.current = playChain.current.then(() => scheduleWav(b64)).catch(() => {})
+  }
+
+  const scheduleWav = async (b64) => {
     const r = refs.current
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
     const buffer = await r.ctx.decodeAudioData(bytes.buffer)

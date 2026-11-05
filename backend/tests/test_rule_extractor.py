@@ -79,3 +79,8 @@ def test_agency_mention_without_self_identification_is_only_a_mention():
 def test_tamil_self_identification():
     r = extract_from_turn("Vanakkam amma, naan Enforcement Directorate officer pesuren")
     assert ("claimed_agency", "ED") in _fields(r.findings)
+
+
+def test_upi_at_end_of_sentence_is_captured_but_email_is_not():
+    assert ("upi_id", "rbi.verify@ybl") in _fields(extract_from_turn("Fine, send it by UPI to rbi.verify@ybl.").findings)
+    assert not any(f.field == "upi_id" for f in extract_from_turn("mail me at ravi@gmail.com").findings)

@@ -100,8 +100,16 @@ export function useCall() {
 
   // Paatti's reply arrives as several short audio chunks: schedule them back to back
   // on one AudioContext so the first sentence plays immediately and there are no gaps.
-  const audioOut = useRef({ ctx: null, next: 0, pending: 0, sources: [] })
-  const playWav = useCallback(async (b64) => {
+  const audioOut = useRef({ ctx: null, next: 0, pending: 0, sources: [], chain: Promise.resolve() })
+  const playWav = useCallback((b64) => {
+    // Decode and schedule strictly in arrival order (decoding is async and can finish out of
+    // order), so a filler can never land in the middle of the reply.
+    const a = audioOut.current
+    a.chain = a.chain.then(() => scheduleWav(b64)).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const scheduleWav = async (b64) => {
     if (live.current.muted) return
     const a = audioOut.current
     try {
@@ -130,8 +138,7 @@ export function useCall() {
     } catch {
       setSpeaking(false)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }
 
   const connect = useCallback((snap) => {
     ws.current?.close()

@@ -110,12 +110,13 @@ Channels                         Backend (FastAPI)                              
    - **Live update:** the hub publishes `turn` and `state` to every dashboard.
    - **Persona reply:** the reply ladder picks the cheapest safe source:
      1. **Read-back:** if an identifier is waiting for confirmation, the read-back is generated in code.
+     1a. **Demo script** (demo mode): the next rehearsed reply, pre-recorded at startup (`demo.py`).
      2. **Intent replies:** prepared in-character lines for "are you an AI?", "tell me the OTP", "you're wasting my time" and "hello?".
      3. **Reply cache:** a hit if this exact situation has been seen before.
      4. **Gemini:** a call through the pool; the reply passes the output guard.
      5. **Script:** scripted line by stage, used as the fallback.
    - **Extraction (background):** Gemini JSON extraction runs, but only on turns with digits, `@` or money words.
-4. **Instant acknowledgement:** the moment the caller stops talking, a pre-synthesised filler ("Haan haan, kekkudhu...") starts playing while speech-to-text and the model run in parallel. If the model's first sentence still isn't ready after 3 s, a second filler plays.
+4. **Filler only when waiting:** scripted (demo), read-back, prepared and cached replies are instant and play straight away. Only if the model's first sentence takes longer than 0.6 s does **one** short pre-synthesised filler play. Audio is sent and played strictly in order, so a filler never overlaps the reply.
 5. **Speak while the model writes:** Gemini streams its reply (`GeminiBackend.chat_stream`). Each complete sentence passes the output guard and goes to Sarvam text-to-speech immediately (`speech.speak_stream`), so Paatti starts talking after the model's first sentence rather than its whole reply. Chunks are sent in order. Text is normalised first ("..." becomes a short comma pause), and pace is 1.5× for a natural speaking speed (measured: the old 0.8–1.2× audio ran at 0.5–2 words/s versus about 2.5–3 for normal speech).
 6. **Persist:** everything is written through to SQLite.
 
@@ -213,6 +214,7 @@ backend/
     personas.py            Persona pack: PAATTI (ta-IN, kavitha), DADI (hi-IN, roopa)
     persona.py             reply ladder + output guard
     prepared.py            intent replies + ReplyCache (JSON file)
+    demo.py                rehearsed demo script (caller lines + Paatti/Dadi replies) and DemoDirector
     llm.py                 GeminiBackend + GeminiPool, AnthropicBackend
     extractor.py           LLM extraction + per-finding validation
     service.py             CallService, Hub (loop-safe fan-out), SessionStore, RateLimiter
@@ -300,9 +302,10 @@ Names only; never commit values. Template: `.env.example`. **The app does not re
 | `ANTHROPIC_API_KEY`, `PAATTI_PERSONA_MODEL`, `PAATTI_EXTRACTOR_MODEL`, `PAATTI_PERSONA_EFFORT`, `PAATTI_ANTHROPIC_DAILY_CAP` | — | Optional Claude backend |
 | `SARVAM_API_KEY` | — | Needed for voice channels |
 | `SARVAM_STT_MODEL` / `SARVAM_STT_MODE` | `saaras:v3` / `translit` | Speech-to-text |
-| `SARVAM_TTS_MODEL` / `SARVAM_TTS_SPEAKER` / `SARVAM_TTS_PACE` | `bulbul:v3` / `kavitha` / 1.5 | Text-to-speech (persona voice overrides speaker) |
+| `SARVAM_TTS_MODEL` / `SARVAM_TTS_SPEAKER` / `SARVAM_TTS_PACE` | `bulbul:v3` / `kavitha` / 1.75 | Text-to-speech (persona voice overrides speaker) |
 | `SARVAM_TTS_SAMPLE_RATE`, `SARVAM_BASE_URL`, `SARVAM_DAILY_CAP` | unset / api.sarvam.ai / 2000 | |
 | `PAATTI_PERSONA` | `paatti` | Default persona (`dadi` = Hindi) |
+| `PAATTI_DEMO_MODE` | 1 | Rehearsed demo script (`docs/DEMO_SCRIPT.md`): scripted, pre-recorded instant replies; off-script lines use Gemini |
 | `PAATTI_PUBLIC_URL` | — | Public HTTPS URL (QR codes, Twilio webhooks) |
 | `PAATTI_STATIC_DIR` | auto | Built dashboard folder to serve |
 | `PAATTI_CORS_ORIGINS` / `PAATTI_CORS_ORIGIN_REGEX` | localhost:5173 / — | Allowed dashboard origins (regex for Vercel previews) |

@@ -101,6 +101,7 @@ async def test_feed_segments_audio_and_worker_processes_turn():
 
 
 async def test_filler_plays_when_reply_is_slow(monkeypatch):
+    monkeypatch.setattr(voice_mod, "FILLER_AFTER_S", 0.02)
     service = make_service()
     original = service.respond_stream
 
@@ -125,14 +126,13 @@ async def test_unclear_line_after_two_empty_transcripts():
     assert sarvam.spoken[-1] == call.profile.unclear[0] and not s.turns
 
 
-async def test_acknowledgement_plays_before_the_reply_and_reply_streams():
+async def test_instant_reply_gets_no_filler():
     service = make_service()
-    sarvam = FakeSarvam(["This is CBI speaking madam, a case is filed on you"])
+    sarvam = FakeSarvam(["Transfer to account 3456 7890 1234 now"])  # read-back: instant
     s, call, sent, _ = make_call(service, sarvam)
     await call.handle_utterance(tone(300))
-    assert sarvam.spoken[0] in call.profile.fillers   # instant "Haan kanna..."
-    assert len(sarvam.spoken) >= 2                     # then the reply, in one or more chunks
-    assert s.turns[-1].role == "paatti"
+    assert not any(t in call.profile.fillers for t in sarvam.spoken)
+    assert any("3456" in t.replace(" ", "") for t in sarvam.spoken)
 
 
 async def test_barge_in_clears_and_echo_guard_drops():
@@ -376,8 +376,8 @@ def test_live_calls_are_never_evicted():
         store.create()
 
 
-async def test_second_filler_when_model_is_very_slow(monkeypatch):
-    monkeypatch.setattr(voice_mod, "SECOND_FILLER_AFTER_S", 0.02)
+async def test_slow_reply_gets_exactly_one_filler_before_it(monkeypatch):
+    monkeypatch.setattr(voice_mod, "FILLER_AFTER_S", 0.02)
     service = make_service()
     original = service.respond_stream
 
@@ -390,5 +390,6 @@ async def test_second_filler_when_model_is_very_slow(monkeypatch):
     sarvam = FakeSarvam(["hello madam this is the police"])
     s, call, sent, _ = make_call(service, sarvam)
     await call.handle_utterance(tone(300))
-    assert sarvam.spoken[0] in call.profile.fillers and sarvam.spoken[1] in call.profile.fillers
-    assert len(sent) >= 3  # acknowledgement, second filler, then the reply
+    fillers = [t for t in sarvam.spoken if t in call.profile.fillers]
+    assert fillers == [sarvam.spoken[0]]       # one filler, first
+    assert len(sent) >= 2                      # then the reply

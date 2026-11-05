@@ -27,8 +27,7 @@ from .session import CallSession
 log = logging.getLogger(__name__)
 
 STT_RATE = 16000
-FILLER_AFTER_S = 0.0  # acknowledgement starts immediately
-SECOND_FILLER_AFTER_S = 3.0
+FILLER_AFTER_S = 0.6  # only a slow (model) reply gets a filler; instant replies never do
 
 
 class TTSCache:
@@ -105,7 +104,8 @@ class VoiceCall:
             self._worker = None
 
     async def warm(self) -> None:
-        """Pre-synthesise greeting and fillers so they play instantly."""
+        """Pre-synthesise greeting and fillers so they play instantly (demo lines are
+        warmed into the disk cache at server startup)."""
         lines = [self.profile.greeting, *self.profile.fillers[:3], *(self.profile.unclear[:1])]
         await asyncio.gather(*(self._tts(t, cache=True) for t in lines), return_exceptions=True)
 
@@ -143,17 +143,12 @@ class VoiceCall:
                 log.exception("voice turn failed")
 
     async def handle_utterance(self, pcm: bytes) -> None:
-        # Instant acknowledgement: a cached "Haan kanna..." starts while STT and the model work,
-        # so there is no dead air after the caller stops talking.
-        ack = asyncio.create_task(self.play(next(self._fillers), cache=True))
         wav = wav_from_pcm(resample(pcm, self.in_rate, STT_RATE), STT_RATE)
         try:
             text = await self.sarvam.transcribe(wav, filename="turn.wav", mime="audio/wav")
         except SarvamError as e:
             self.service.hub.publish(self.session.id, {"type": "notice", "message": f"speech-to-text failed: {e}"})
-            await ack
             return
-        await ack
         if not text:
             self._empty_streak += 1
             if self._empty_streak >= 2:
@@ -164,8 +159,10 @@ class VoiceCall:
         await self.reply_streaming(text)
 
     async def reply_streaming(self, text: str) -> None:
-        """Speak the reply sentence by sentence as the model writes it; if the first sentence
-        is slow (> SECOND_FILLER_AFTER_S), fill the gap once more."""
+        """Speak the reply sentence by sentence as it is produced. Scripted, read-back and
+        prepared replies arrive instantly and play straight away; only if the first sentence
+        takes longer than FILLER_AFTER_S (a model call) does ONE short filler cover the gap.
+        Audio is sent strictly in order, so a filler can never overlap the reply."""
         sentences: asyncio.Queue = asyncio.Queue()
 
         async def produce() -> None:
@@ -178,7 +175,7 @@ class VoiceCall:
         producer = asyncio.create_task(produce())
         try:
             try:
-                first = await asyncio.wait_for(sentences.get(), SECOND_FILLER_AFTER_S)
+                first = await asyncio.wait_for(sentences.get(), FILLER_AFTER_S)
             except asyncio.TimeoutError:
                 await self.play(next(self._fillers), cache=True)
                 first = await sentences.get()
