@@ -13,7 +13,7 @@
 ---
 
 ## 🏆 Beyond Hacks 2.0 (SRM IST) — Top 10 Finalist
-Built by **Team LockIn** (Faheem, Rushi, Ray, Deeps).
+Built by **Team LockIn** (Faheem, Aarushi, Rayaan, Deepankar).
 
 Following our Top 10 finish, judges and cyber-fraud mentors recommended institutionalizing the pipeline for government and law-enforcement pilots—specifically integrating with **I4C (Indian Cybercrime Coordination Centre)**, the **NCRP 1930 Helpline**, and **telecom/bank fraud prevention consortiums**.
 
