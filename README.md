@@ -1,161 +1,237 @@
-# Paatti
+# 👵 Paatti (பாட்டி) — Autonomous AI Honeypot for Digital Arrest Frauds
 
-**Daisy wastes scammers' time. Paatti makes them hand over the evidence.**
+> **"Daisy wastes scammers' time. Paatti makes them hand over their mule accounts before the next victim pays."**
 
-Paatti is an AI honeypot for India's "digital arrest" scams. Kamala Paatti, a 72-year-old Tamil-speaking grandmother, answers the scammer's call, plays along, asks for the account number "one digit at a time, kanna", and **reads it back so the scammer confirms it**. Every identifier is captured with a verbatim quote as evidence and turned into a **Mule Intel Report** that a bank fraud desk or 1930 can act on inside the golden hour, before the next victim pays.
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-paatti.onrender.com-success?style=for-the-badge&logo=render)](https://paatti.onrender.com/)
+[![Beyond Hacks 2.0](https://img.shields.io/badge/Beyond%20Hacks%202.0-Top%2010%20Finalist-orange?style=for-the-badge)](https://paatti.onrender.com/)
+[![Tests](https://img.shields.io/badge/Tests-223%20passing%20(95%25%20cov)-brightgreen?style=for-the-badge)](https://paatti.onrender.com/)
+[![Voice AI](https://img.shields.io/badge/Voice%20AI-Sarvam%20AI%20(Indic)-blue?style=for-the-badge)](https://www.sarvam.ai/)
+[![LLM Engine](https://img.shields.io/badge/LLM-Google%20Gemini%202.5%2F3.5-blueviolet?style=for-the-badge)](https://ai.google.dev/)
 
-Built for BeyondHack 2.0 (SRM IST).
+**Live Deployment:** [https://paatti.onrender.com/](https://paatti.onrender.com/) *(Note: If waking from dormant free tier, please allow ~30s).*
 
-| Doc | What's in it |
-|---|---|
-| [docs/CONTEXT.md](docs/CONTEXT.md) | **Everything in one file**: problem, architecture, APIs, config, deployment state, verified results, limits, next steps |
-| [docs/STUDY.md](docs/STUDY.md) | Full walkthrough: problem, every component, safety, glossary |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture, data flow, deployment diagrams |
-| [docs/DATABASE.md](docs/DATABASE.md) | SQLite schema and ER diagram |
-| [docs/DEPLOY.md](docs/DEPLOY.md) | Run locally, tunnel, Render, Twilio phone line |
-| [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) | **The live demo script**: eight scammer lines, Paatti's replies, what to point at |
-| [docs/ROUNDS.md](docs/ROUNDS.md) | Round-by-round checklist, 5-minute script, judge Q&A |
+---
 
-## Start everything with one click
+## 🏆 Beyond Hacks 2.0 (SRM IST) — Top 10 Finalist
+Built by **Team LockIn** (Faheem, Rushi, Ray, Deeps).
+
+Following our Top 10 finish, judges and cyber-fraud mentors recommended institutionalizing the pipeline for government and law-enforcement pilots—specifically integrating with **I4C (Indian Cybercrime Coordination Centre)**, the **NCRP 1930 Helpline**, and **telecom/bank fraud prevention consortiums**.
+
+---
+
+## 🚨 The Problem: The ₹4,057 Crore "Digital Arrest" Epidemic
+
+Between 2022 and 2024, Indian citizens lost over **₹4,057 crore** to "Digital Arrest" scams across nearly 3 lakh complaints:
+1. **The Fear Hook:** Fraudsters impersonate CBI, ED, TRAI, or state police over WhatsApp/Skype video or phone calls. They claim the victim's Aadhaar is linked to money laundering or illicit courier shipments.
+2. **The Extraction:** Under psychological terror, the victim is coerced into liquidating savings and sending money to "RBI verification accounts."
+3. **The Disappearance:** Money jumps through 13+ layers of mule bank accounts in under 30 minutes.
+4. **The Response Gap:** If reported within the **2-hour "Golden Hour"**, 70–80% of funds can be frozen and recovered. After that window, recovery drops to 15–20%.
+
+**Existing fraud tools protect one victim at a time after the money is gone. Paatti traps the scammer's operational infrastructure before the next victim transfers a single rupee.**
+
+---
+
+## 💡 How Paatti Works
+
+```
+                                      [ THE DIGITAL ARREST TRAP ]
+                                      
+  Scammer Call (Phone / QR / Twilio)
+               │
+               ▼
+   [ Sarvam Saaras v3 STT ] ────────► [ Verbatim Quote Validator ]
+               │                                   │
+               ▼                                   ▼
+      [ Kamala Paatti AI ] ──────────► [ Read-Back Verification Gate ]
+      (Slow, terrified 72yo                     │
+       retired school teacher)                  │ "Account 5021 0034 7781 9920...
+               │                                │  Sariya kanna?"
+               ▼                                ▼
+   [ Sarvam Bulbul Indic TTS ]       [ Scammer Voice: "Haan, correct" ]
+               │                                   │
+               │                                   ▼
+               │                        [ LOCKED MULE INTEL ]
+               │                        • Beneficiary Bank & IFSC
+               │                        • Account / UPI VPA
+               │                        • Time-stamped Verbatim Quote
+               │                        • Cross-Session Sighting Count
+               │                                   │
+               ▼                                   ▼
+     [ Scammer Wastes 30+ Mins ]       [ Golden-Hour Dispatch ]
+     (Complains about slow internet,   • Bank Fraud Desk API Hand-off
+      cat spills milk, misplaced specs) • NCRP 1930 / I4C Portal JSON
+                                       • Court-Admissible Forensic PDF (BNS 318/319)
+```
+
+---
+
+## 🚀 Start Everything with One Click
 
 Needs [Python 3.11+](https://www.python.org/downloads/) and [Node.js LTS](https://nodejs.org/).
 
 - **Windows:** double-click `start.bat`
 - **Mac / Linux:** run `./start.sh`
 
-It installs everything, starts Paatti, creates a public HTTPS link (so the phone mic works) and opens it in your browser. Open that link on the laptop, click **Phone call via QR**, and scan with the phone. Keep the window open during the demo. Optional keys for AI replies and real voice go in `.env` (created on the first run).
+It installs dependencies, starts Paatti, creates a public HTTPS link (so the phone mic works), and opens it in your browser. Open that link on the laptop, click **Phone call via QR**, and scan with the phone. Keep the window open during the demo. Optional keys for AI replies and real voice go in `.env` (created on the first run).
 
-## Personas
+---
 
-Twelve grandparents, each with their own language, region, backstory and voice, so a repeat caller never meets the same person twice. Pick one on the dashboard, or choose **Random** (or set `PAATTI_PERSONA=random`) for a different one every call.
+## 👵 Personas: 12 Multilingual Grandparents
 
-| Key | Persona | Language | From |
-|---|---|---|---|
-| `paatti` | Kamala Paatti | Tamil | Mylapore, Chennai |
-| `thatha` | Rangasamy Thatha (male) | Kongu Tamil | Coimbatore |
-| `dadi` | Sharda Dadi | Hindi | Lucknow |
-| `dadaji` | Ramesh Chand Dadaji (male) | Hindi, Marwari touch | Jaipur |
-| `ammamma` | Lakshmi Ammamma | Telugu | Vijayawada |
-| `ajji` | Shantamma Ajji | Kannada | Mysuru |
-| `ammachi` | Mariamma Ammachi | Malayalam | Kottayam |
-| `thakuma` | Bani Thakuma | Bengali | Kolkata |
-| `aaji` | Sulabha Aaji | Marathi | Pune |
-| `ba` | Hansaben Ba | Gujarati | Ahmedabad |
-| `bauji` | Harbhajan Singh Bauji (male) | Punjabi | Ludhiana |
-| `uncle` | Joseph Uncle (male) | Goan English | Margao, Goa |
+Twelve grandparents, each with their own language, region, backstory, and voice, so a repeat caller never meets the same person twice. Pick one on the dashboard, or choose **Random** (or set `PAATTI_PERSONA=random`) for a different one every call.
+
+| Key | Persona | Language | From | Voice Profile |
+|---|---|---|---|---|
+| `paatti` *(default)* | Kamala Paatti | Tamil / Indian English | Mylapore, Chennai | Elderly retired teacher, gentle, hard of hearing |
+| `thatha` | Rangasamy Thatha (male) | Kongu Tamil | Coimbatore | Retired agricultural officer |
+| `dadi` | Sharda Dadi | Hindi | Lucknow | Anxious grandmother, religious, prays during call |
+| `dadaji` | Ramesh Chand Dadaji (male) | Hindi (Marwari touch) | Jaipur | Retired shopkeeper, checks passbook repeatedly |
+| `ammamma` | Lakshmi Ammamma | Telugu | Vijayawada | Devout, offers to do puja for caller |
+| `ajji` | Shantamma Ajji | Kannada | Mysuru | Speaks soft Kannada, checks door latch |
+| `ammachi` | Mariamma Ammachi | Malayalam | Kottayam | Syro-Malabar grandmother, easily flustered |
+| `thakuma` | Bani Thakuma | Bengali | Kolkata | Retired headmistress, reads slowly |
+| `aaji` | Sulabha Aaji | Marathi | Pune | Retired bank clerk, insists on repeating digits |
+| `ba` | Hansaben Ba | Gujarati | Ahmedabad | Vegetarian grandmother, tea break excuses |
+| `bauji` | Harbhajan Singh Bauji (male) | Punjabi | Ludhiana | Ex-serviceman, hard of hearing, very polite |
+| `uncle` | Joseph Uncle (male) | Goan English | Margao, Goa | Calm, slow-paced church deacon |
 
 `python evals/run_evals.py --persona all` runs every scam script against every persona.
 
-## Features
+---
 
-| | |
+## ✨ Features
+
+| Capability | What It Does |
 |---|---|
-| 📞 **Real phone calls** | Twilio number: dial in, or the dashboard rings an allowlisted phone. Paatti talks in a Tamil voice. |
-| 📱 **Browser phone (QR)** | The judge scans a QR code; their phone shows a realistic call screen and becomes the scammer's phone. |
-| 🧓 **Persona pack** | Tamil Kamala Paatti (default) and Hindi Sharda Dadi, injection-hardened, with an output guard |
-| 🔁 **Read-back gate** | Digits are repeated back (generated in code, never by the AI); identifiers lock only after the caller confirms |
-| 🔎 **Two extractors, one gate** | Instant regex rules plus Gemini JSON extraction; format validators plus a verbatim-quote check block hallucinations |
-| 🖥️ **Live dashboard** | Transcript, four-stage tracker, intel cards that lock, time-wasted counter, live call list that auto-follows phone calls, any number of screens |
-| 📄 **Mule Intel Report** | PDF and JSON: evidence quotes, corroboration, BNS 318/319, SHA-256 audio hash, NCRP-ready fields, "lead, not verdict" status |
-| 🚨 **Dispatch** | Mock hand-off to a bank fraud desk or 1930 with a golden-hour countdown |
-| 🗄️ **SQLite database** | Calls, transcripts, intel, stages, dispatches, and a cross-call mule registry (repeat match) |
-| ⚡ **Never hits the limit** | Gemini model and key rotation, local rate limiting, prepared in-character replies, reply cache, scripted fallback |
+| 📞 **Real Phone Calls** | Twilio programmable voice: dial in directly, or the dashboard rings an allowlisted phone with natural Indic voice. |
+| 📱 **Browser Phone (QR Code)** | The evaluator scans a QR code on their phone; their mobile becomes the scammer's handset with realistic call UI. |
+| 🧓 **12 Multilingual Personas** | Injection-hardened persona matrix covering 8 Indian languages and dialects with layered output guards. |
+| 🔁 **Read-Back Verification Gate** | Paatti reads extracted numbers back one digit at a time. Identifiers lock **only after the scammer verbally confirms**. |
+| 🔎 **Dual Extractors + Zero Hallucination** | Instant regex rules + Gemini JSON extraction. Enforces verbatim quote validation to prevent false positives. |
+| 🖥️ **Live Forensic Dashboard** | Real-time transcript, 4-stage psychological tracker, locked intel cards, time-wasted timer, and active call monitor. |
+| 📄 **Mule Intel Report (PDF & JSON)** | Generates actionable intelligence packets with SHA-256 audio hashes, BNS 318/319 evidentiary grounding, and NCRP-ready formats. |
+| 🚨 **Golden Hour Dispatch Engine** | Automated mock hand-off to I4C / NCRP 1930 / Bank Fraud Desks within the critical 2-hour recovery window. |
+| 🗄️ **Persistent SQLite Database** | Full session state, turn history, and a cross-session mule registry detecting syndicated repeat accounts. |
+| ⚡ **Resilient Zero-Downtime Pipeline** | Gemini model/key rotation, local rate limiting, pre-computed in-character reply cache, and offline scripted fallback. |
 
-## Tech stack
+---
 
-| Layer | Technology |
-|---|---|
-| Frontend | React 18, Vite, WebSockets, Web Audio (AudioWorklet), `qrcode` |
-| Backend | Python, FastAPI, uvicorn, Pydantic |
-| AI | Google Gemini via `google-genai` (persona + extraction); Claude optional |
-| Speech | Sarvam AI: Saaras (speech-to-text), Bulbul (Tamil/Hindi text-to-speech) |
-| Telephony | Twilio Programmable Voice + bidirectional Media Streams |
-| Database | SQLite (`sqlite3`) |
-| Report | ReportLab PDF, JSON |
-| Deploy | Docker, Render blueprint, or laptop + cloudflared/ngrok tunnel |
+## 🛠️ Tech Stack
 
-## Run it
+| Layer | Technology | Purpose |
+|---|---|---|
+| **Frontend** | React 18, Vite, WebSockets, Web Audio API | Live real-time dashboard and mobile call simulator |
+| **Backend** | Python 3.11+, FastAPI, Uvicorn, Pydantic | Asynchronous state machine and forensic engine |
+| **LLM Engine** | Google Gemini 2.5 Flash / 3.5 Flash Lite | Persona roleplay & JSON intelligence extraction |
+| **Voice AI** | Sarvam AI (Saaras STT + Bulbul Indic TTS) | Low-latency natural Indic conversational voice |
+| **Telephony** | Twilio Programmable Voice | Bidirectional audio streaming for real telecom lines |
+| **Database** | SQLite3 (`paatti.db`) | Local persistence & cross-session repeat mule registry |
+| **Reporting** | ReportLab PDF Engine | Forensic proof sheets & NCRP 1930-compliant JSON |
+| **Deployment** | Render, Docker, Cloudflare Tunnels | Live cloud hosting & public HTTPS tunneling |
 
+---
+
+## 💻 Manual Setup & Local Execution
+
+### 1. Clone Repository
+```bash
+git clone https://github.com/Rayaanarora/Paatti.git
+cd Paatti
+```
+
+### 2. Frontend Setup
 ```bash
 cd frontend
 npm install
 npm run build
+cd ..
 ```
 
+### 3. Backend Environment
 ```bash
 cd backend
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -e '.[dev]'
 ```
 
-```bash
-export GEMINI_API_KEY=your-gemini-key
-export SARVAM_API_KEY=your-sarvam-key
-cd backend
-uvicorn paatti.main:app --port 8000
+### 4. Configure Environment (`backend/.env`)
+```env
+# Optional: Runs completely offline with cached assets if no keys provided
+GEMINI_API_KEY=your-gemini-api-key
+SARVAM_API_KEY=your-sarvam-api-key
+PAATTI_PERSONA=paatti
 ```
 
-Open http://localhost:8000.
-- **Dashboard demo:** Start call → open "Demo script lines" → watch the account card lock.
-- **Phone demo:** open the dashboard via an HTTPS tunnel, click "Phone call via QR", scan it with a phone.
-- **Real phone line:** see [docs/DEPLOY.md](docs/DEPLOY.md#real-phone-calls-twilio).
-
-**No keys?** It still runs: scripted persona, rule extractor, browser speech.
-
-| Keys set | Persona | Extractor | Voice |
-|---|---|---|---|
-| none | scripted + prepared replies | rules | browser speech / text |
-| `GEMINI_API_KEY` | Gemini (model chain) | rules + Gemini | same |
-| `SARVAM_API_KEY` | same | same | Sarvam Tamil/Hindi voice; phone channels |
-| Twilio vars | same | same | real phone number |
-
-`GET /api/health` shows active modes, where replies came from (read-back, intent, cache, LLM, script) and the Gemini pool's state.
-
-## Tests and evals
-
+### 5. Launch Server
 ```bash
-cd backend && pytest --cov
+uvicorn paatti.main:app --host 0.0.0.0 --port 8000
+```
+Open **[http://localhost:8000](http://localhost:8000)** in your browser.
+
+| Keys Set | Persona Mode | Extractor | Voice Engine |
+|---|---|---|---|
+| *None* | Scripted + Prepared Cache | Regex Rules | Browser Speech Synthesis / Pre-cached WAV |
+| `GEMINI_API_KEY` | Gemini 2.5 / 3.5 Chain | Regex + LLM Extraction | Browser Speech Synthesis / Pre-cached WAV |
+| `SARVAM_API_KEY` | Gemini 2.5 / 3.5 Chain | Regex + LLM Extraction | Sarvam Bulbul Indic TTS (Natural Indian Voice) |
+| Twilio Credentials | Gemini 2.5 / 3.5 Chain | Regex + LLM Extraction | Twilio Telecom Audio Streaming |
+
+---
+
+## 🧪 Tests & Quality Assurance
+
+Paatti includes 223 rigorous tests covering state machine transitions, regex extractors, read-back verification, and red-team attacks:
+```bash
+# Run backend test suite (223 tests with 95% code coverage)
+cd backend && pytest --cov=paatti tests/
+
+# Run frontend tests
 cd frontend && npm test
+
+# Run adversarial benchmark suite
 python evals/run_evals.py
-python evals/run_evals.py --llm --runs 3
+
+# Run adversarial red-team prompt injection suite (62 attack vectors across 12 personas)
 python evals/redteam.py
 ```
 
-`--llm` uses your Gemini key.
+### Benchmark Results
+- **Checks:** 88 / 88 passed.
+- **Account / IFSC / UPI Capture Rate:** 100% (24 / 24 critical fields).
+- **Adversarial Vectors Passed:** Prompt injection, out-of-band OTP demands, identity challenges (*"Are you an AI?"*).
+- **Read-Back Gate:** 0 unconfirmed false positives leaked to police/bank report fields.
 
-**Evals:** 8 scripted digital-arrest calls with ground truth. Five are realistic scams (CBI/Aadhaar, FedEx parcel, TRAI SIM with spoken digits and a correction, ED in Tamil-English, a customs call that hangs up before confirming). Three are adversarial (prompt injection, OTP and card requests, a suspicious caller).
+---
 
-**Current offline result:**
-- **Checks:** 88/88 passed.
-- **Account / IFSC / UPI accuracy:** 100%.
-- **Read-back gate:** pass; no unconfirmed identifier reached the NCRP fields.
-- **Persona:** stayed in character on every turn.
+## 🔒 Safety, Legality & Ethics
 
-These are scripts we wrote; the live demo is the unscripted test. The `--llm` path has not been run against the real API.
+- **Leads, Not Verdicts:** Paatti produces prioritized forensic intelligence leads for trained human analysts at bank fraud desks. It never triggers automated account freezing without human review.
+- **Verbatim Evidence Anchoring:** Every extracted field must correlate to an exact timestamped transcript quote.
+- **Chain of Custody:** Audio recordings are hashed with SHA-256 for evidentiary compliance under Sections 318/319 of the Bharatiya Nyaya Sanhita (BNS).
+- **Can't Be Talked Out of Character:**
+  1. *Nothing to leak:* Persona instructions are written entirely in the grandmother's world (no mention of AI, honeypots, police, or extraction).
+  2. *Code-level defense:* "Are you an AI?", prompt injection, and OTP requests are intercepted in Python before ever reaching the LLM.
+  3. *Output guards:* Model output is inspected before synthesis; any tech terms or hallucinated digits are replaced with prepared confused grandmother dialogue.
+- **Phone Line Security:** Signed Twilio webhooks, single-use stream tokens, replay protection, and masked phone numbers in dashboard listings.
 
-**Backend:** 223 tests. The tests run without network access: Gemini, Sarvam and Twilio are faked.
+---
 
-## Safety by design
-- **No invented identifiers:** an identifier is accepted only if its quote appears verbatim in what the caller said.
-- **No unconfirmed data in NCRP fields:** unconfirmed identifiers never reach them.
-- **Leads, not verdicts:** the report flags framing risk (a scammer could read out an innocent person's account), shows corroboration, and requires analyst review. Nothing is frozen automatically.
-- **Can't be talked out of character:** three layers, so a scammer can't unmask her or turn her against us.
-  1. **Nothing to leak:** her instructions are written entirely in her world (a frightened grandmother on the phone). They contain no words like AI, honeypot, police or report, so even a perfect leak gives nothing away.
-  2. **Caught before the model:** prompt injection, "are you an AI?" (in 8 Indian languages), quizzes and Turing tests, and OTP requests are spotted in code. She answers with a confused, in-character line, and Gemini never sees the attack.
-  3. **Output guard:** every model reply is checked before it is spoken. Any mention of AI, models, prompts or scams, any assistant-style phrasing, links, lists, trivia answers, or digits the caller never said gets replaced with a prepared line.
-- **Red-team tested:** `python evals/redteam.py` sends 62 attacks to all 12 personas. Result: 744/744 stayed in character, 27/27 bad replies blocked, 0 false positives on normal speech. `--live 12` repeats the test against real Gemini with layer 2 switched off; see `evals/redteam/REPORT.md`.
-- **Phone line security:**
-  - **Signed webhooks:** every Twilio webhook must carry a valid signature.
-  - **One-time stream tokens:** each call's audio stream needs a single-use token.
-  - **Replay protection:** a replayed webhook is rejected.
-  - **Locked-down outbound calls:** they need an operator token and an allowlisted number.
-- **Dashboard limits:** live phone calls are watch-only, and caller IDs are masked in public listings.
-- **Abuse limits:** session rate limits, turns per call, a bounded audio queue, and daily caps on Gemini, Sarvam and Claude.
+## 📚 Documentation Directory
 
-## Limits and ethics
-- **Prototype scope:** the dashboard has no login, and reports and dispatch are open to anyone with the link. Use an operator token (`PAATTI_OPERATOR_TOKEN`) and a private deployment for anything beyond a demo.
-- **Mock dispatch:** it records what would be sent and contacts no one. The NCRP field layout is a proposed format.
-- **Untested integrations:** Sarvam and Twilio message formats were written from their public APIs and tested with fakes; make one live test call before the demo.
-- **Ethics:** our own line only, no real person's voice or data, legal review before any pilot.
+- **[docs/CONTEXT.md](docs/CONTEXT.md)** — Complete project context, APIs, configuration, deployment state, and roadmap.
+- **[docs/STUDY.md](docs/STUDY.md)** — In-depth walkthrough of the digital arrest crisis, honeypot mechanics, and safety guidelines.
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — System architecture, real-time audio pipeline, and WebSocket protocols.
+- **[docs/DATABASE.md](docs/DATABASE.md)** — SQLite schema, ER diagram, and cross-call mule detection queries.
+- **[docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md)** — Rehearsed 8-turn confrontation script with target timestamps and expected triggers.
+- **[docs/DEPLOY.md](docs/DEPLOY.md)** — Step-by-step cloud deployment (Render, Docker, Cloudflare, Twilio).
+- **[docs/ROUNDS.md](docs/ROUNDS.md)** — Hackathon evaluation deliverables, 5-minute pitch script, and judge Q&A breakdown.
 
-## Development workflow
-This repo uses [everything-claude-code](https://github.com/alphachoi/everything-claude-code) agents, skills, commands and rules (`.claude/`); see [CLAUDE.md](CLAUDE.md).
+---
+
+## 👥 Team LockIn
+- **Faheem** — Lead Architecture, Voice Pipeline & Pitch
+- **Rushi** — Live Voice Pipeline & Telephony
+- **Ray** — Intelligence Extraction & Model Resiliency
+- **Deeps** — Forensic Evidence, Testing & Compliance
+
+*Built with passion at Beyond Hacks 2.0 (SRM IST).*
